@@ -1,6 +1,6 @@
-# RTChess (classic mode)
+# RTChess (real-time prototype)
 
-Static prototype of a lichess-style board to play classic chess against a built-in engine.
+Real-time chess prototype (lichess-style board) where both sides are controlled by one player.
 
 ## Run locally (serve over HTTP)
 
@@ -11,9 +11,11 @@ Because the script is an ES module, loading it from `file://` will trigger brows
 
 ## Notes
 
-- Real-time variant: both colors are user-controlled; pieces have a cooldown (3s at start, 10s after each move) before they can move again.
+- Real-time variant (single player controls both sides):
+  - Pieces start with a 3s cooldown; after each move the moved piece gets a 10s cooldown.
+  - A shrinking ring around a piece shows remaining cooldown (clockwise, starts at 12 o’clock).
+  - You can move any off-cooldown piece at any time; check is purely a visual indicator. Game ends on king capture.
 - Choose your color/difficulty selectors are disabled in this mode (free play).
 - No AI: move any ready piece at any time.
 - The board colors mimic the lichess brown theme; pieces use the lichess “cburnett” SVG set (see `assets/pieces`).
 - Entry point is `index.js` (ES modules): served directly via the `<script type="module" src="index.js">` tag in `index.html`.
-- The chess rules include castling, promotion, en passant, stalemate, checkmate, and the 50-move rule.
