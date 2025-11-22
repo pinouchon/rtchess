@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RTChess - vs Computer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">RT</div>
+      <div class="brand-text">rtchess</div>
+    </div>
+    <div class="mode-pill">Classic chess - vs computer</div>
+  </header>
+
+  <main class="layout">
+    <section class="board-card">
+      <div class="card-header">
+        <div class="controls-inline">
+          <button id="newGameBtn" class="btn primary">New game</button>
+          <button id="flipBtn" class="btn ghost">Flip</button>
+        </div>
+      </div>
+      <div class="board-wrapper">
+        <div id="board" class="board" aria-label="chess board"></div>
+        <div id="promotionOverlay" class="promotion-overlay hidden" role="dialog" aria-modal="true">
+          <div class="promotion-card">
+            <p>Promote to</p>
+            <div class="promo-grid">
+              <button class="promo-btn" data-piece="q">Queen</button>
+              <button class="promo-btn" data-piece="r">Rook</button>
+              <button class="promo-btn" data-piece="b">Bishop</button>
+              <button class="promo-btn" data-piece="n">Knight</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="legend-item">
+          <span class="swatch swatch-light"></span> Light squares
+        </div>
+        <div class="legend-item">
+          <span class="swatch swatch-dark"></span> Dark squares
+        </div>
+        <div class="legend-item">
+          <span class="swatch swatch-accent"></span> Available move
+        </div>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">Status</div>
+            <h2 id="statusText">Ready</h2>
+          </div>
+          <div class="dot" id="turnDot"></div>
+        </div>
+        <p id="subStatus" class="muted">White to move</p>
+        <div class="meta-row">
+          <div>
+            <div class="label">You play</div>
+            <div class="value" id="playerSideLabel">White</div>
+          </div>
+          <div>
+            <div class="label">Difficulty</div>
+            <div class="value" id="difficultyLabel">Normal</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">Setup</div>
+            <h3>Options</h3>
+          </div>
+        </div>
+        <div class="field">
+          <label for="sideSelect">Your color</label>
+          <select id="sideSelect">
+            <option value="w" selected>White</option>
+            <option value="b">Black</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="difficultySelect">Difficulty</label>
+          <select id="difficultySelect">
+            <option value="1">Casual</option>
+            <option value="2" selected>Normal</option>
+            <option value="3">Thinking</option>
+          </select>
+        </div>
+        <button id="resetBtn" class="btn ghost">Reset position</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">Moves</div>
+            <h3>Move list</h3>
+          </div>
+        </div>
+        <ol id="moveList" class="move-list"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
