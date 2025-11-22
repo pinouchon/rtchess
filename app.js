@@ -108,6 +108,7 @@ const state = {
   dragFrom: null,
   dragging: null,
   hoverTarget: null,
+  inCheck: { w: false, b: false },
 };
 
 let boardEl;
@@ -195,6 +196,7 @@ function renderBoard() {
   boardEl.innerHTML = "";
   const displaySquares = getDisplayOrder();
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
+  const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
 
   displaySquares.forEach((idx) => {
     const square = document.createElement("div");
@@ -247,6 +249,7 @@ function renderBoard() {
 function updateHighlights() {
   if (!boardEl) return;
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
+  const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
   boardEl.querySelectorAll(".square").forEach((square) => {
     const idx = Number(square.dataset.square);
     square.classList.remove("highlight", "target", "capture", "hover-target");
@@ -256,8 +259,13 @@ function updateHighlights() {
     }
     if (state.selected !== null && targetSquares.has(idx)) {
       square.classList.add("target");
-      const occupying = state.game.board[idx];
-      if (occupying) square.classList.add("capture");
+      if (captureSquares.has(idx)) square.classList.add("capture");
+    }
+    if (state.inCheck[ "w" ] && state.game.board[idx] === "K") {
+      square.classList.add("check");
+    }
+    if (state.inCheck[ "b" ] && state.game.board[idx] === "k") {
+      square.classList.add("check");
     }
     if (state.hoverTarget === idx) {
       square.classList.add("hover-target");
@@ -449,6 +457,10 @@ function playMove(move) {
   state.moveHistory.push(moveToString(move));
   state.selected = null;
   state.legalMoves = [];
+  state.inCheck = {
+    w: isInCheck(state.game, "w"),
+    b: isInCheck(state.game, "b"),
+  };
   const outcome = evaluateGameEnd(state.game);
   if (outcome) {
     state.gameOver = true;
@@ -485,6 +497,7 @@ function resetGame() {
   state.lastMove = null;
   state.moveHistory = [];
   state.gameOver = false;
+  state.inCheck = { w: false, b: false };
   renderBoard();
   renderMoveList();
   renderStatus("Ready", `${sideName(state.game.turn)} to move`);

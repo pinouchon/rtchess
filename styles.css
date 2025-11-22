@@ -221,22 +221,27 @@ h3 {
 }
 
 .square.capture::after {
-  width: 60%;
-  height: 60%;
-  border-radius: 12px;
-  background: rgba(242, 107, 107, 0.65);
+  display: none;
 }
 
-.square.hover-target::before {
+.square.capture::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.18);
+  background: radial-gradient(circle at 50% 50%, transparent 0 84%, var(--accent) 48% 100%);
   pointer-events: none;
+}
+
+.square.hover-target, .square.capture:hover {
+  box-shadow: inset 0 0 0 9999px rgba(0, 0, 0, 0.18);
 }
 
 .square.last-move {
   box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.3);
+}
+
+.square.check {
+  box-shadow: inset 0 0 0 3px rgba(242, 107, 107, 0.7);
 }
 
 .promotion-overlay {
