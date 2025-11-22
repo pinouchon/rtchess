@@ -120,15 +120,9 @@ export function updateHighlights() {
       square.classList.add("target");
       if (captureSquares.has(idx)) square.classList.add("capture");
     }
-    if (state.inCheck["w"] && state.game.board[idx] === "K") {
-      square.classList.add("check");
-    }
-    if (state.inCheck["b"] && state.game.board[idx] === "k") {
-      square.classList.add("check");
-    }
-    if (state.hoverTarget === idx) {
-      square.classList.add("hover-target");
-    }
+    if (state.hoverTarget === idx) square.classList.add("hover-target");
+    if (state.inCheck.w && state.game.board[idx] === "K") square.classList.add("check");
+    if (state.inCheck.b && state.game.board[idx] === "k") square.classList.add("check");
   });
 }
 
@@ -137,6 +131,7 @@ export function renderBoard() {
   const displaySquares = getDisplayOrder();
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
   const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
+  const now = Date.now();
 
   displaySquares.forEach((idx) => {
     const square = document.createElement("div");
@@ -151,15 +146,9 @@ export function renderBoard() {
       square.classList.add("target");
       if (captureSquares.has(idx)) square.classList.add("capture");
     }
-    if (state.inCheck["w"] && state.game.board[idx] === "K") {
-      square.classList.add("check");
-    }
-    if (state.inCheck["b"] && state.game.board[idx] === "k") {
-      square.classList.add("check");
-    }
-    if (state.hoverTarget === idx) {
-      square.classList.add("hover-target");
-    }
+    if (state.hoverTarget === idx) square.classList.add("hover-target");
+    if (state.inCheck.w && state.game.board[idx] === "K") square.classList.add("check");
+    if (state.inCheck.b && state.game.board[idx] === "k") square.classList.add("check");
 
     const rank = Math.floor(idx / 8);
     const file = idx % 8;
@@ -186,6 +175,15 @@ export function renderBoard() {
       img.alt = piece;
       pieceEl.appendChild(img);
       pieceEl.addEventListener("pointerdown", (e) => startPointerDrag(e, idx, pieceEl));
+
+      const cd = state.cooldowns[idx];
+      if (cd && cd.until > now) {
+        const pct = Math.max(0, Math.min(1, (cd.until - now) / cd.duration));
+        const cooldownEl = document.createElement("div");
+        cooldownEl.className = "cooldown";
+        cooldownEl.style.setProperty("--pct", pct);
+        pieceEl.appendChild(cooldownEl);
+      }
       square.appendChild(pieceEl);
     }
 
@@ -198,9 +196,8 @@ export function renderStatus(text, subText) {
   elements.statusText.textContent = text;
   elements.subStatus.textContent = subText || "";
   elements.turnDot.style.background = state.game.turn === "w" ? "var(--accent)" : "#f9d66d";
-  elements.playerSideLabel.textContent = state.playerSide === "w" ? "White" : "Black";
-  elements.difficultyLabel.textContent =
-    state.difficulty === 1 ? "Casual" : state.difficulty === 2 ? "Normal" : "Thinking";
+  elements.playerSideLabel.textContent = "Both";
+  elements.difficultyLabel.textContent = "N/A";
 }
 
 export function renderMoveList() {

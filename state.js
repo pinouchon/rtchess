@@ -7,7 +7,6 @@ import {
   idxToSquare,
   pieceColor,
 } from "./rules.js";
-import { findBestMove } from "./ai.js";
 
 export const state = {
   game: initialState(),
@@ -16,14 +15,12 @@ export const state = {
   lastMove: null,
   moveHistory: [],
   orientation: "w",
-  playerSide: "w",
-  aiSide: "b",
-  difficulty: 2,
   gameOver: false,
   dragFrom: null,
   dragging: null,
   hoverTarget: null,
   inCheck: { w: false, b: false },
+  cooldowns: Array(64).fill(null),
 };
 
 export function resetGame() {
@@ -37,11 +34,16 @@ export function resetGame() {
   state.dragging = null;
   state.hoverTarget = null;
   state.inCheck = { w: false, b: false };
+  const now = Date.now();
+  state.cooldowns = state.game.board.map((p) =>
+    p ? { until: now + 3000, duration: 3000 } : null
+  );
 }
 
 export function selectSquare(idx) {
   state.selected = idx;
-  state.legalMoves = generateLegalMoves(state.game).filter((m) => m.from === idx);
+  const color = pieceColor(state.game.board[idx]);
+  state.legalMoves = generateLegalMoves(state.game, color).filter((m) => m.from === idx);
   state.hoverTarget = null;
 }
 
@@ -49,15 +51,6 @@ export function clearSelection() {
   state.selected = null;
   state.legalMoves = [];
   state.hoverTarget = null;
-}
-
-export function setPlayerSide(side) {
-  state.playerSide = side;
-  state.aiSide = side === "w" ? "b" : "w";
-}
-
-export function setDifficulty(level) {
-  state.difficulty = level;
 }
 
 export function setOrientation(orientation) {
@@ -79,6 +72,10 @@ export function applyMove(move) {
   state.selected = null;
   state.legalMoves = [];
   state.hoverTarget = null;
+  const now = Date.now();
+  // set cooldown for destination piece
+  state.cooldowns[move.to] = { until: now + 10000, duration: 10000 };
+  state.cooldowns[move.from] = null;
   state.inCheck = {
     w: isInCheck(state.game, "w"),
     b: isInCheck(state.game, "b"),
@@ -88,21 +85,14 @@ export function applyMove(move) {
   return outcome;
 }
 
-export function aiMove() {
-  if (state.gameOver || state.game.turn !== state.aiSide) return null;
-  const legal = generateLegalMoves(state.game);
-  if (!legal.length) return null;
-  const depth = state.difficulty + 1;
-  const best = findBestMove(state.game, depth, state.aiSide);
-  const move = best || legal[Math.floor(Math.random() * legal.length)];
-  return move;
-}
-
 export function legalMoves() {
   return generateLegalMoves(state.game);
 }
 
 export function canSelect(idx) {
   const piece = state.game.board[idx];
-  return piece && pieceColor(piece) === state.game.turn && pieceColor(piece) === state.playerSide;
+  if (!piece) return false;
+  const cd = state.cooldowns[idx];
+  if (cd && cd.until > Date.now()) return false;
+  return true;
 }

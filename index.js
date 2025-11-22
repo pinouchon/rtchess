@@ -3,38 +3,29 @@ import {
   resetGame,
   selectSquare,
   clearSelection,
-  setPlayerSide,
-  setDifficulty,
   setOrientation,
   applyMove,
-  aiMove,
   canSelect,
-  legalMoves,
 } from "./state.js";
 import { pieceColor } from "./rules.js";
-import { bindControls, renderAll, showPromotion, updateHighlights } from "./ui.js";
+import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
 
 const elements = {};
 
 function getStatusText() {
-  if (state.gameOver) return "Game over";
-  if (state.game.turn === state.playerSide) return "Your turn";
-  return "Thinking...";
+  return state.gameOver ? "Game over" : "Free play";
 }
 
 function getSubStatus() {
-  const turn = state.game.turn === "w" ? "White" : "Black";
-  return `${turn} to move`;
+  return "Move any ready piece";
 }
 
 function handleSquareClick(idx) {
   if (state.gameOver) return;
   const piece = state.game.board[idx];
-  const turn = state.game.turn;
-  const color = pieceColor(piece);
 
   if (state.selected === null) {
-    if (piece && color === turn && color === state.playerSide) {
+    if (piece && canSelect(idx)) {
       selectSquare(idx);
       renderAll(getStatusText(), getSubStatus());
     }
@@ -57,7 +48,7 @@ function handleSquareClick(idx) {
     return;
   }
 
-  if (piece && color === turn && color === state.playerSide) {
+  if (piece && canSelect(idx)) {
     selectSquare(idx);
   } else {
     clearSelection();
@@ -68,18 +59,6 @@ function handleSquareClick(idx) {
 function executeMove(move) {
   const outcome = applyMove(move);
   renderAll(outcome ? outcome.title : getStatusText(), outcome ? outcome.detail : getSubStatus());
-  if (outcome) return;
-
-  if (state.game.turn === state.aiSide) {
-    renderAll("Thinking...", getSubStatus());
-    setTimeout(() => {
-      const aiChoice = aiMove();
-      if (aiChoice) {
-        const aiOutcome = applyMove(aiChoice);
-        renderAll(aiOutcome ? aiOutcome.title : getStatusText(), aiOutcome ? aiOutcome.detail : getSubStatus());
-      }
-    }, 120);
-  }
 }
 
 function handleDrop(targetIdx) {
@@ -99,18 +78,8 @@ function handleDrop(targetIdx) {
 
 function newGame() {
   resetGame();
-  state.orientation = state.playerSide;
+  state.orientation = "w";
   renderAll("Ready", getSubStatus());
-  if (state.playerSide === "b") {
-    renderAll("Thinking...", "White to move");
-    setTimeout(() => {
-      const aiChoice = aiMove();
-      if (aiChoice) {
-        const outcome = applyMove(aiChoice);
-        renderAll(outcome ? outcome.title : getStatusText(), outcome ? outcome.detail : getSubStatus());
-      }
-    }, 150);
-  }
 }
 
 function init() {
@@ -132,7 +101,6 @@ function init() {
     onSquareClick: handleSquareClick,
     onDrop: handleDrop,
     onNewGame: () => {
-      setPlayerSide(elements.sideSelect.value);
       newGame();
     },
     onFlip: () => {
@@ -140,24 +108,22 @@ function init() {
       renderAll(getStatusText(), getSubStatus());
     },
     onReset: () => {
-      setPlayerSide(elements.sideSelect.value);
       newGame();
     },
-    onSideChange: (val) => {
-      setPlayerSide(val);
-      renderAll(getStatusText(), getSubStatus());
-    },
-    onDifficultyChange: (val) => {
-      setDifficulty(val);
-      renderAll(getStatusText(), getSubStatus());
-    },
+    onSideChange: () => {},
+    onDifficultyChange: () => {},
     onPromotionChoice: (move) => executeMove(move),
     canDrag: (idx) => canSelect(idx),
   });
 
-  setPlayerSide(elements.sideSelect.value);
-  setDifficulty(Number(elements.difficultySelect.value));
+  elements.sideSelect.disabled = true;
+  elements.difficultySelect.disabled = true;
   newGame();
+
+  setInterval(() => {
+    renderBoard();
+    updateHighlights();
+  }, 60);
 }
 
 if (document.readyState === "loading") {

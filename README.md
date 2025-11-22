@@ -11,8 +11,9 @@ Because the script is an ES module, loading it from `file://` will trigger brows
 
 ## Notes
 
-- Choose your color and difficulty from the sidebar, then start a new game.
-- Playing as Black lets the AI make the opening move automatically.
+- Real-time variant: both colors are user-controlled; pieces have a cooldown (3s at start, 10s after each move) before they can move again.
+- Choose your color/difficulty selectors are disabled in this mode (free play).
+- No AI: move any ready piece at any time.
 - The board colors mimic the lichess brown theme; pieces use the lichess “cburnett” SVG set (see `assets/pieces`).
 - Entry point is `index.js` (ES modules): served directly via the `<script type="module" src="index.js">` tag in `index.html`.
 - The chess rules include castling, promotion, en passant, stalemate, checkmate, and the 50-move rule.

@@ -128,17 +128,14 @@ export function cloneState(game) {
   };
 }
 
-export function generateLegalMoves(game) {
+export function generateLegalMoves(game, activeColor = game.turn) {
   const moves = [];
   for (let i = 0; i < 64; i++) {
     const piece = game.board[i];
-    if (!piece || pieceColor(piece) !== game.turn) continue;
+    if (!piece || pieceColor(piece) !== activeColor) continue;
     moves.push(...generateMovesFromSquare(game, i, piece));
   }
-  return moves.filter((mv) => {
-    const next = makeMove(game, mv);
-    return !isInCheck(next, game.turn);
-  });
+  return moves;
 }
 
 function generateMovesFromSquare(game, idx, piece) {
@@ -426,7 +423,6 @@ export function isInCheck(game, color) {
 export function makeMove(game, move) {
   const next = cloneState(game);
   const movingColor = pieceColor(move.piece);
-  const opponent = movingColor === "w" ? "b" : "w";
   next.enPassant = null;
   next.halfmove += 1;
   if (movingColor === "b") next.fullmove += 1;
@@ -499,20 +495,15 @@ export function makeMove(game, move) {
     if (move.to === 0) next.castling.bQ = false;
   }
 
-  next.turn = opponent;
+  next.turn = movingColor; // keep color, turn not used in realtime mode
   return next;
 }
 
 export function evaluateGameEnd(game) {
-  const legal = generateLegalMoves(game);
-  if (legal.length === 0) {
-    const inCheck = isInCheck(game, game.turn);
-    return inCheck
-      ? { title: "Checkmate", detail: `${game.turn === "w" ? "White" : "Black"} is mated` }
-      : { title: "Stalemate", detail: "No legal moves" };
-  }
-  if (game.halfmove >= 100) {
-    return { title: "Draw", detail: "50-move rule" };
-  }
+  // End immediately if any king is missing (captured)
+  const whiteKing = game.board.includes("K");
+  const blackKing = game.board.includes("k");
+  if (!whiteKing) return { title: "Black wins", detail: "White king captured" };
+  if (!blackKing) return { title: "White wins", detail: "Black king captured" };
   return null;
 }
