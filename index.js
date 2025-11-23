@@ -6,6 +6,10 @@ import {
   setOrientation,
   applyMove,
   canSelect,
+  isOnCooldown,
+  setPremove,
+  clearPremove,
+  processPremoves,
 } from "./state.js";
 import { pieceColor } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
@@ -25,6 +29,11 @@ function handleSquareClick(idx) {
   const piece = state.game.board[idx];
 
   if (state.selected === null) {
+    if (state.premove[idx]) {
+      clearPremove(idx);
+      renderAll(getStatusText(), getSubStatus());
+      return;
+    }
     if (piece && canSelect(idx)) {
       selectSquare(idx);
       renderAll(getStatusText(), getSubStatus());
@@ -40,6 +49,13 @@ function handleSquareClick(idx) {
 
   const chosenMove = state.legalMoves.find((m) => m.to === idx);
   if (chosenMove) {
+    const cd = isOnCooldown(chosenMove.from);
+    if (cd) {
+      setPremove(chosenMove);
+      clearSelection();
+      renderAll(getStatusText(), getSubStatus());
+      return;
+    }
     if (chosenMove.promotion) {
       showPromotion(chosenMove);
     } else {
@@ -65,6 +81,13 @@ function handleDrop(targetIdx) {
   if (state.selected === null) return;
   const chosenMove = state.legalMoves.find((m) => m.to === targetIdx);
   if (!chosenMove) {
+    clearSelection();
+    renderAll(getStatusText(), getSubStatus());
+    return;
+  }
+  const cd = isOnCooldown(chosenMove.from);
+  if (cd) {
+    setPremove(chosenMove);
     clearSelection();
     renderAll(getStatusText(), getSubStatus());
     return;
@@ -121,8 +144,13 @@ function init() {
   newGame();
 
   setInterval(() => {
-    renderBoard();
-    updateHighlights();
+    const res = processPremoves();
+    if (res.moved) {
+      renderAll(res.outcome ? res.outcome.title : getStatusText(), res.outcome ? res.outcome.detail : getSubStatus());
+    } else {
+      renderBoard();
+      updateHighlights();
+    }
   }, 60);
 }
 

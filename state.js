@@ -21,6 +21,7 @@ export const state = {
   hoverTarget: null,
   inCheck: { w: false, b: false },
   cooldowns: Array(64).fill(null),
+  premove: Array(64).fill(null),
 };
 
 export function resetGame() {
@@ -38,6 +39,7 @@ export function resetGame() {
   state.cooldowns = state.game.board.map((p) =>
     p ? { until: now + 3000, duration: 3000 } : null
   );
+  state.premove = Array(64).fill(null);
 }
 
 export function selectSquare(idx) {
@@ -76,6 +78,8 @@ export function applyMove(move) {
   // set cooldown for destination piece
   state.cooldowns[move.to] = { until: now + 10000, duration: 10000 };
   state.cooldowns[move.from] = null;
+  state.premove[move.from] = null;
+  state.premove[move.to] = null;
   state.inCheck = {
     w: isInCheck(state.game, "w"),
     b: isInCheck(state.game, "b"),
@@ -91,8 +95,48 @@ export function legalMoves() {
 
 export function canSelect(idx) {
   const piece = state.game.board[idx];
-  if (!piece) return false;
-  const cd = state.cooldowns[idx];
-  if (cd && cd.until > Date.now()) return false;
+  if (!piece || state.gameOver) return false;
   return true;
+}
+
+export function isOnCooldown(idx) {
+  const cd = state.cooldowns[idx];
+  return !!cd && cd.until > Date.now();
+}
+
+export function setPremove(move) {
+  state.premove[move.from] = { from: move.from, to: move.to };
+}
+
+export function clearPremove(idx) {
+  state.premove[idx] = null;
+}
+
+export function processPremoves() {
+  if (state.gameOver) return { moved: false, outcome: null };
+  const now = Date.now();
+  let moved = false;
+  let outcome = null;
+  for (let idx = 0; idx < 64; idx++) {
+    const pm = state.premove[idx];
+    if (!pm) continue;
+    const piece = state.game.board[idx];
+    if (!piece) {
+      state.premove[idx] = null;
+      continue;
+    }
+    const cd = state.cooldowns[idx];
+    if (cd && cd.until > now) continue;
+    const color = pieceColor(piece);
+    const moves = generateLegalMoves(state.game, color);
+    const move = moves.find((m) => m.from === idx && m.to === pm.to);
+    if (move) {
+      outcome = applyMove(move);
+      moved = true;
+      if (outcome) break;
+    } else {
+      state.premove[idx] = null;
+    }
+  }
+  return { moved, outcome };
 }

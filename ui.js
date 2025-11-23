@@ -23,6 +23,13 @@ function getDisplayOrder() {
   return order;
 }
 
+function indexToDisplayRC(idx) {
+  const rank = Math.floor(idx / 8);
+  const file = idx % 8;
+  if (state.orientation === "w") return { row: rank, col: file };
+  return { row: 7 - rank, col: 7 - file };
+}
+
 function pointerToBoardIdx(clientX, clientY) {
   const rect = elements.board.getBoundingClientRect();
   const squareSize = rect.width / 8;
@@ -132,6 +139,7 @@ export function renderBoard() {
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
   const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
   const now = Date.now();
+  const premoveList = state.premove.filter(Boolean);
 
   displaySquares.forEach((idx) => {
     const square = document.createElement("div");
@@ -190,6 +198,35 @@ export function renderBoard() {
     square.addEventListener("click", () => handlers.onSquareClick(idx));
     elements.board.appendChild(square);
   });
+
+  if (premoveList.length) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "premove-layer");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("preserveAspectRatio", "none");
+    premoveList.forEach((pm) => {
+      const fromRC = indexToDisplayRC(pm.from);
+      const toRC = indexToDisplayRC(pm.to);
+      const x1 = ((fromRC.col + 0.5) / 8) * 100;
+      const y1 = ((fromRC.row + 0.5) / 8) * 100;
+      const x2 = ((toRC.col + 0.5) / 8) * 100;
+      const y2 = ((toRC.row + 0.5) / 8) * 100;
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("class", "premove-arrow-line");
+      const head = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      head.setAttribute("cx", x2);
+      head.setAttribute("cy", y2);
+      head.setAttribute("r", "1.4");
+      head.setAttribute("class", "premove-arrow-head");
+      svg.appendChild(line);
+      svg.appendChild(head);
+    });
+    elements.board.appendChild(svg);
+  }
 }
 
 export function renderStatus(text, subText) {
