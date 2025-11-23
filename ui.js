@@ -218,12 +218,19 @@ export function renderBoard() {
       pieceEl.addEventListener("pointerdown", (e) => startPointerDrag(e, idx, pieceEl));
 
       const cd = state.cooldowns[idx];
-      if (cd && cd.until > now) {
-        const pct = Math.max(0, Math.min(1, (cd.until - now) / cd.duration));
-        const cooldownEl = document.createElement("div");
-        cooldownEl.className = "cooldown";
-        cooldownEl.style.setProperty("--pct", pct);
-        pieceEl.appendChild(cooldownEl);
+      if (cd) {
+        let pct = 0;
+        if (cd.pending) {
+          pct = 1;
+        } else if (cd.until > now) {
+          pct = Math.max(0, Math.min(1, (cd.until - now) / cd.duration));
+        }
+        if (pct > 0) {
+          const cooldownEl = document.createElement("div");
+          cooldownEl.className = "cooldown";
+          cooldownEl.style.setProperty("--pct", pct);
+          pieceEl.appendChild(cooldownEl);
+        }
       }
       square.appendChild(pieceEl);
     }
@@ -266,8 +273,10 @@ export function renderStatus(text, subText) {
   elements.statusText.textContent = text;
   elements.subStatus.textContent = subText || "";
   elements.turnDot.style.background = state.game.turn === "w" ? "var(--accent)" : "#f9d66d";
-  elements.playerSideLabel.textContent = "Both";
-  elements.difficultyLabel.textContent = "N/A";
+  const role = state.session.role;
+  const sideLabel = role === "host" ? "White" : role === "guest" ? "Black" : "Both";
+  elements.playerSideLabel.textContent = sideLabel;
+  elements.difficultyLabel.textContent = role === "solo" ? "N/A" : "PvP";
 }
 
 export function renderMoveList() {

@@ -10,17 +10,33 @@ import {
   setPremove,
   clearPremove,
   processPremoves,
+  setMode,
+  setRole,
+  setGameId,
+  setOpponentJoined,
+  setGameStarted,
+  startInitialCooldowns,
 } from "./state.js";
 import { pieceColor } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
 
 const elements = {};
+let currentMode = "gametesting";
+let currentRole = "solo";
+let currentGameId = null;
+let statusPoll = null;
+let serverAvailable = true;
 
 function getStatusText() {
-  return state.gameOver ? "Game over" : "Free play";
+  return state.gameOver ? "Game over" : currentMode === "pvp" ? "PvP setup" : "Free play";
 }
 
 function getSubStatus() {
+  if (currentMode === "pvp") {
+    if (!state.session.opponentJoined) return "Waiting for opponent to join";
+    if (!state.session.gameStarted) return "Opponent joined - host can start";
+    return currentRole === "host" ? "You play White" : "You play Black";
+  }
   return "Move any ready piece";
 }
 
@@ -120,9 +136,216 @@ function handleDrop(targetIdx) {
 }
 
 function newGame() {
+  if (currentMode === "pvp") {
+    setGameStarted(false);
+  }
   resetGame();
-  state.orientation = "w";
+  state.orientation = currentRole === "guest" ? "b" : "w";
   renderAll("Ready", getSubStatus());
+}
+
+function makeGameId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function buildInviteLink(gameId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("game", gameId);
+  url.searchParams.set("role", "guest");
+  return url.toString();
+}
+
+const API_BASE = `${window.location.origin}/api/pvp`;
+
+async function apiJoin(role, gameId) {
+  const res = await fetch(`${API_BASE}/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role, gameId }),
+  });
+  if (!res.ok) throw new Error("join failed");
+}
+
+async function apiStatus(gameId) {
+  const res = await fetch(`${API_BASE}/status?game=${encodeURIComponent(gameId)}`);
+  if (!res.ok) throw new Error("status failed");
+  return res.json();
+}
+
+async function apiStart(gameId) {
+  const res = await fetch(`${API_BASE}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gameId }),
+  });
+  if (!res.ok) throw new Error("start failed");
+}
+
+function updateModePill() {
+  const pill = elements.modePill;
+  pill.textContent =
+    currentMode === "pvp" ? "Realtime chess - PvP" : "Realtime chess - gametesting";
+}
+
+function updateInviteUI() {
+  const panel = elements.pvpPanel;
+  if (currentMode !== "pvp") {
+    panel.classList.add("hidden");
+    elements.startGameBtn.disabled = true;
+    elements.pvpStatus.textContent = "";
+    return;
+  }
+  panel.classList.remove("hidden");
+  const link = buildInviteLink(currentGameId);
+  elements.inviteLink.value = link;
+  const isHost = currentRole === "host";
+  elements.startGameBtn.textContent = "Start game";
+  elements.startGameBtn.disabled = !isHost || !state.session.opponentJoined || state.session.gameStarted;
+  elements.startGameBtn.classList.toggle("hidden", !isHost);
+  if (!serverAvailable) {
+    elements.pvpStatus.textContent = "PvP server unavailable. Run python3 server.py";
+    return;
+  }
+  elements.pvpStatus.textContent = state.session.opponentJoined
+    ? state.session.gameStarted
+      ? "Game started"
+      : isHost
+        ? "Opponent has joined. Host can start."
+        : "Waiting for host to start the game."
+    : isHost
+      ? "Waiting for opponent to join"
+      : "Waiting for host to start the game.";
+}
+
+function updateMode(newMode) {
+  currentMode = newMode;
+  setMode(newMode);
+  updateModePill();
+  elements.modeSelect.value = newMode;
+  if (newMode === "pvp") {
+    if (!currentGameId) {
+      currentGameId = makeGameId();
+      setGameId(currentGameId);
+      const url = new URL(window.location.href);
+      url.searchParams.set("game", currentGameId);
+      url.searchParams.delete("role");
+      window.history.replaceState({}, "", url.toString());
+    }
+    currentRole = "host";
+    setRole("host");
+    setOrientation("w");
+    setOpponentJoined(false);
+    setGameStarted(false);
+    apiJoin("host", currentGameId)
+      .then(() => {
+        serverAvailable = true;
+      })
+      .catch(() => {
+        serverAvailable = false;
+      })
+      .finally(() => updateInviteUI());
+    if (statusPoll) clearInterval(statusPoll);
+    statusPoll = setInterval(() => {
+      apiStatus(currentGameId)
+        .then((s) => {
+          const wasStarted = state.session.gameStarted;
+          setOpponentJoined(!!s.guest);
+          setGameStarted(!!s.started);
+          if (s.started && !wasStarted) startInitialCooldowns();
+          serverAvailable = true;
+          updateInviteUI();
+          renderAll(getStatusText(), getSubStatus());
+        })
+        .catch(() => {
+          serverAvailable = false;
+          updateInviteUI();
+        });
+    }, 2000);
+  } else {
+    currentRole = "solo";
+    setRole("solo");
+    setOpponentJoined(false);
+    setGameStarted(false);
+    currentGameId = null;
+    setGameId(null);
+    if (statusPoll) {
+      clearInterval(statusPoll);
+      statusPoll = null;
+    }
+  }
+  newGame();
+  updateInviteUI();
+}
+
+function initFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const gameId = params.get("game");
+  const role = params.get("role");
+  if (gameId) {
+    currentGameId = gameId;
+    setGameId(gameId);
+    currentMode = "pvp";
+    setMode("pvp");
+    if (role === "guest") {
+      currentRole = "guest";
+      setRole("guest");
+      setOrientation("b");
+      apiJoin("guest", gameId)
+        .then(() => {
+          serverAvailable = true;
+        })
+        .catch(() => {
+          serverAvailable = false;
+        })
+        .finally(() => updateInviteUI());
+      setOpponentJoined(true);
+      if (statusPoll) clearInterval(statusPoll);
+      statusPoll = setInterval(() => {
+        apiStatus(gameId)
+          .then((s) => {
+            const wasStarted = state.session.gameStarted;
+            setGameStarted(!!s.started);
+            if (s.started && !wasStarted) startInitialCooldowns();
+            serverAvailable = true;
+            updateInviteUI();
+            renderAll(getStatusText(), getSubStatus());
+          })
+          .catch(() => {
+            serverAvailable = false;
+            updateInviteUI();
+          });
+      }, 2000);
+    } else {
+      currentRole = "host";
+      setRole("host");
+      setOrientation("w");
+      apiJoin("host", gameId)
+        .then(() => {
+          serverAvailable = true;
+        })
+        .catch(() => {
+          serverAvailable = false;
+        })
+        .finally(() => updateInviteUI());
+      if (statusPoll) clearInterval(statusPoll);
+      statusPoll = setInterval(() => {
+        apiStatus(gameId)
+          .then((s) => {
+            const wasStarted = state.session.gameStarted;
+            setOpponentJoined(!!s.guest);
+            setGameStarted(!!s.started);
+            if (s.started && !wasStarted) startInitialCooldowns();
+            serverAvailable = true;
+            updateInviteUI();
+            renderAll(getStatusText(), getSubStatus());
+          })
+          .catch(() => {
+            serverAvailable = false;
+            updateInviteUI();
+          });
+      }, 2000);
+    }
+  }
 }
 
 function init() {
@@ -131,6 +354,7 @@ function init() {
   elements.statusText = document.getElementById("statusText");
   elements.subStatus = document.getElementById("subStatus");
   elements.turnDot = document.getElementById("turnDot");
+  elements.modePill = document.getElementById("modePill");
   elements.playerSideLabel = document.getElementById("playerSideLabel");
   elements.difficultyLabel = document.getElementById("difficultyLabel");
   elements.promotionOverlay = document.getElementById("promotionOverlay");
@@ -139,6 +363,13 @@ function init() {
   elements.newGameBtn = document.getElementById("newGameBtn");
   elements.flipBtn = document.getElementById("flipBtn");
   elements.resetBtn = document.getElementById("resetBtn");
+  elements.modeSelect = document.getElementById("modeSelect");
+  elements.pvpPanel = document.getElementById("pvpPanel");
+  elements.inviteLink = document.getElementById("inviteLink");
+  elements.copyInviteBtn = document.getElementById("copyInviteBtn");
+  elements.pvpStatus = document.getElementById("pvpStatus");
+  elements.startGameBtn = document.getElementById("startGameBtn");
+  elements.soloOptions = document.getElementById("soloOptions");
 
   bindControls(elements, {
     onSquareClick: handleSquareClick,
@@ -161,6 +392,35 @@ function init() {
 
   elements.sideSelect.disabled = true;
   elements.difficultySelect.disabled = true;
+
+  initFromUrl();
+  updateModePill();
+  updateInviteUI();
+  if (currentMode !== "pvp") {
+    setOrientation("w");
+  }
+  elements.modeSelect.value = currentMode;
+  elements.soloOptions.classList.toggle("hidden", currentMode === "pvp");
+
+  elements.modeSelect.addEventListener("change", (e) => {
+    updateMode(e.target.value);
+    elements.soloOptions.classList.toggle("hidden", e.target.value === "pvp");
+  });
+
+  elements.copyInviteBtn.addEventListener("click", () => {
+    elements.inviteLink.select();
+    document.execCommand("copy");
+  });
+
+  elements.startGameBtn.addEventListener("click", () => {
+    if (currentRole !== "host") return;
+    setGameStarted(true);
+    startInitialCooldowns();
+    updateInviteUI();
+    renderAll("Game started", getSubStatus());
+    apiStart(currentGameId).catch(() => {});
+  });
+
   newGame();
 
   setInterval(() => {

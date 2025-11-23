@@ -24,9 +24,22 @@ export const state = {
   cooldowns: Array(64).fill(null),
   premove: Array(64).fill(null),
   patternMoves: [],
+  session: {
+    mode: "gametesting",
+    role: "solo",
+    gameId: null,
+    opponentJoined: false,
+    gameStarted: false,
+  },
 };
 
 export function resetGame() {
+  // If PvP and not started yet, leave cooldowns in a pending state (full circle, no countdown)
+  const pendingCooldowns =
+    state.session.mode === "pvp" && !state.session.gameStarted
+      ? state.game.board.map((p) => (p ? { pending: true, duration: 3000 } : null))
+      : null;
+
   state.game = initialState();
   state.selected = null;
   state.legalMoves = [];
@@ -38,11 +51,12 @@ export function resetGame() {
   state.hoverTarget = null;
   state.inCheck = { w: false, b: false };
   const now = Date.now();
-  state.cooldowns = state.game.board.map((p) =>
-    p ? { until: now + 3000, duration: 3000 } : null
-  );
+  state.cooldowns =
+    pendingCooldowns ||
+    state.game.board.map((p) => (p ? { until: now + 3000, duration: 3000 } : null));
   state.premove = Array(64).fill(null);
   state.patternMoves = [];
+  state.gameOver = false;
 }
 
 export function selectSquare(idx) {
@@ -63,6 +77,33 @@ export function clearSelection() {
 
 export function setOrientation(orientation) {
   state.orientation = orientation;
+}
+
+export function setMode(mode) {
+  state.session.mode = mode;
+}
+
+export function setRole(role) {
+  state.session.role = role;
+}
+
+export function setGameId(id) {
+  state.session.gameId = id;
+}
+
+export function setOpponentJoined(val) {
+  state.session.opponentJoined = val;
+}
+
+export function setGameStarted(val) {
+  state.session.gameStarted = val;
+}
+
+export function startInitialCooldowns() {
+  const now = Date.now();
+  state.cooldowns = state.game.board.map((p) =>
+    p ? { until: now + 3000, duration: 3000 } : null
+  );
 }
 
 export function moveToString(move) {
@@ -103,6 +144,7 @@ export function legalMoves() {
 export function canSelect(idx) {
   const piece = state.game.board[idx];
   if (!piece || state.gameOver) return false;
+  if (state.session.mode === "pvp" && !state.session.gameStarted) return false;
   return true;
 }
 

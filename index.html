@@ -12,7 +12,7 @@
       <div class="brand-mark">RT</div>
       <div class="brand-text">rtchess</div>
     </div>
-    <div class="mode-pill">Classic chess - vs computer</div>
+    <div class="mode-pill" id="modePill">Realtime chess - gametesting</div>
   </header>
 
   <main class="layout">
@@ -80,21 +80,41 @@
           </div>
         </div>
         <div class="field">
-          <label for="sideSelect">Your color</label>
-          <select id="sideSelect">
-            <option value="w" selected>White</option>
-            <option value="b">Black</option>
+          <label for="modeSelect">Mode</label>
+          <select id="modeSelect">
+            <option value="gametesting" selected>Gametesting (solo)</option>
+            <option value="pvp">PvP (invite a friend)</option>
           </select>
         </div>
-        <div class="field">
-          <label for="difficultySelect">Difficulty</label>
-          <select id="difficultySelect">
-            <option value="1">Casual</option>
-            <option value="2" selected>Normal</option>
-            <option value="3">Thinking</option>
-          </select>
+        <div id="pvpPanel" class="stacked hidden">
+          <div class="field">
+            <label for="inviteLink">Invite link (share with Black)</label>
+            <div class="invite-row">
+              <input id="inviteLink" type="text" readonly>
+              <button id="copyInviteBtn" class="btn ghost small">Copy</button>
+            </div>
+          </div>
+          <div class="pvp-status" id="pvpStatus"></div>
+          <button id="startGameBtn" class="btn primary">Start game</button>
         </div>
-        <button id="resetBtn" class="btn ghost">Reset position</button>
+        <div id="soloOptions">
+          <div class="field">
+            <label for="sideSelect">Your color</label>
+            <select id="sideSelect">
+              <option value="w" selected>White</option>
+              <option value="b">Black</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="difficultySelect">Difficulty</label>
+            <select id="difficultySelect">
+              <option value="1">Casual</option>
+              <option value="2" selected>Normal</option>
+              <option value="3">Thinking</option>
+            </select>
+          </div>
+          <button id="resetBtn" class="btn ghost">Reset position</button>
+        </div>
       </section>
 
       <section class="panel">

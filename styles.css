@@ -297,6 +297,56 @@ h3 {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
+.stacked {
+  display: grid;
+  gap: 10px;
+}
+
+.invite-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.invite-row input {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pvp-status {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(110, 199, 124, 0.12);
+  border: 1px solid rgba(110, 199, 124, 0.35);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.btn.small {
+  padding: 8px 10px;
+}
+
+.btn:disabled {
+  background: #555a66;
+  color: #c8ced8;
+  cursor: not-allowed;
+  box-shadow: none;
+  border-color: #4a4f59;
+  opacity: 0.8;
+}
+
+.hidden {
+  display: none !important;
+}
+
 .promotion-card {
   background: #f6f8fb;
   color: #1d1f25;
