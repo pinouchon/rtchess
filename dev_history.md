@@ -1489,3 +1489,381 @@ Run `python3 export_dev_history.py` from the repo root to regenerate `dev_histor
 
 --------------------------------------------------------------------------------
 
+Commit #10:
+Hash: 499632856b730ff5e3d660bbcc705ca7a68e6fb9
+Timestamp: 2025-11-23T21:22:44+01:00
+Message:
+renamed export script to export_dev_history.py
+
+--------------------------------------------------------------------------------
+
+Prompt #77:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T21:29:38.960000+01:00
+Prompt:
+Now, let's make it so when a player pre-moves, you can pre-move pawns to take, even if a tile is empty (one tile in front and to the side). And you can premove a piece to re-take, as if "defending the piece", eg a knight is pre-moved to a pawn, and will re-take if the pawn is taken. In both of these cases, the pre-move can be made to an on-cooldown or off-cooldown piece. If there is something to take, the premove is executed. If there is nothing to take (the pre-move target becomes empty or the pre-move becomes invalid), then it is cancelled. Each piece can be pre-moved only once (and to one location only). This includes the previously implemented pre-moves and those new ones
+Response:
+Implemented richer premove capture logic. Pieces on cooldown now show extra capture-intent targets: pawns can premove diagonally even if empty, and any piece can premove onto friendly-occupied squares to auto-retake later. Premove entries are tagged as capture intents, stay armed while a friendly sits on the target, execute only when an enemy occupies and the capture is legal, and cancel if the target goes empty or becomes invalid. Ready pieces still only see truly legal moves.
+
+Files touched:
+- `state.js`
+
+Suggested check: in the browser, select a cooldown pawn and confirm diagonal capture squares highlight even when empty; set a premove onto a friendly piece’s square and verify it fires when that square gets captured, otherwise cancels when the square clears.
+
+--------------------------------------------------------------------------------
+
+Prompt #78:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T21:44:35.051000+01:00
+Prompt:
+Now, let's make it so when a player pre-moves, you can pre-move pawns to take, even if a tile is empty (one tile in front and to the side). And you can premove a piece to re-take, as if "defending the piece", eg a knight is pre-moved to a pawn, and will re-take if the pawn is taken. In both of these cases, the pre-move can be made to an on-cooldown or off-cooldown piece. If there is something to take, the premove is executed. If there is nothing to take (the pre-move target becomes empty or the pre-move becomes invalid), then it is cancelled. Each piece can be pre-moved only once (and to one location only). This includes the previously implemented pre-moves and those new ones. The premoves on existing pieces can be done while on-cooldown and off-cooldown. The pawn pre-moves to take can also be done while on and off-cooldown
+Response:
+Implemented premove capture intents for all pieces regardless of cooldown. Selection now always shows capture-intent targets (diagonal pawn grabs, defending onto occupied squares, etc.), and any capture-intent choice is queued as a premove even if the piece is ready. Premove logic stays armed over friendly occupants, executes when an enemy appears once cooldown finishes, and cancels if the target is empty or invalid at execution time. Updated in `state.js` and `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #79:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T21:49:01.553000+01:00
+Prompt:
+Let me clarify: if white has a rook and a pawn next to each other, the rook can be pre-moved to the pawn. That will make it so when the pawn is captured by a black bishop (for example), the rook will instantly take the black bishop. This means that you can premove onto your own pieces
+Response:
+Rooks (and all pieces) can now premove onto friendly pieces to auto-retake when that square is captured, and pawn diagonal premoves are available even when squares are empty, regardless of cooldown. Capture-intent targets always show when selecting a piece; choosing them queues a premove even if the piece is ready. Premove execution cancels if the target goes empty, stays armed while a friendly sits there, and fires as soon as an enemy occupies the target and the path is legal. 
+
+Files: `state.js`, `index.js`.
+
+Try it: set a rook’s premove onto its adjacent pawn; move a black piece to capture that pawn—the rook should instantly capture in reply once its cooldown clears.
+
+--------------------------------------------------------------------------------
+
+Prompt #80:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T21:51:32.379000+01:00
+Prompt:
+Pre-moving the rook doesn't seem to work. The rook pre-move should be indicated by the arrow. But regardless it doesn't seem to work
+Response:
+I made premove capture intents more reliable for things like a rook guarding its own pawn:
+
+- Added `movesForSquare` in `state.js` to always produce base moves plus capture-intent moves for any piece (on or off cooldown).
+- `selectSquare` now uses that helper, and `index.js` recomputes legal moves right before evaluating a click or drop, so capture-intent targets (like premoving onto your own pawn) are always present.
+- Imports in `index.js` updated to use the new helper; premove setting still queues capture-intent moves even when the piece is ready.
+
+This should show the premove arrow for the rook-to-pawn “defend” scenario and execute the retake when the pawn gets captured.
+
+--------------------------------------------------------------------------------
+
+Prompt #81:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T22:02:38.078000+01:00
+Prompt:
+Let's change the pre-move logic to the following: any piece can be pre-moved to all the squares it can go on its next move, even ignoring obstacles. Eg the rook at the start can be premoved to capture the opposing rook, even if there are the pawns blocking the path. Another example: a bishop can be premoved to an empty square even if blocked by a pawn. Pawns themselves can be premoved to capture an "imaginary piece"
+Then, whenever the premove location (so simply move or capture) becomes a legal move, then the move is executed.
+
+When moving a piece, the following logic happens:
+If the piece is off-cooldown: 
+  if the move is to an invalid square: nothing happens
+  if the move is legal: move is executed
+  if the move is to a valid square but illegal (blocked by own or opposing piece): the priece is pre-moved
+IF the piece is on-cooldown:
+  if the move is to an invalid square: nothing happens
+  if the move is legal: the piece is pre-moved
+  if the move is to a valid square but illegal: the piece is pre-moved
+
+The UI should now show the green dots & capture highlights depending on all possible valid squares this piece can go to. For the "illegal moves but on valid squares", the highlight has opacity 50%.
+
+First make a plan to implement this, and ask clarifying questions to be sure of it
+Response:
+Here’s a concise implementation plan plus a few clarifying questions:
+
+Plan
+- Define “valid square” generator: for each piece, list all squares reachable by its move pattern ignoring blockers (rook/queen straight lines to edge, bishop diagonals to edge, knight fixed jumps, king 1-step, pawn forward(s) + diagonals). Tag which of those squares are currently legal (no blockers / correct occupancy) vs “blocked” (line obstructed, own piece on dest, or for pawns forward blocked).  
+- Selection/highlights: show all valid squares; use normal opacity for currently legal, and 50% opacity for blocked-but-valid geometry. If the destination currently has an opponent piece, use capture styling; if it’s blocked along the path, still show capture styling but at 50% opacity.  
+- Click/drag handling:  
+  * If piece off cooldown: invalid square -> ignore; currently legal -> execute; valid geometry but illegal (blocked/occupied wrongly) -> set premove to that target.  
+  * If piece on cooldown: invalid -> ignore; valid geometry (legal or blocked) -> set premove.  
+- Premove storage: one premove per piece. Premove executes when, on a tick, the intended from-piece exists, is off cooldown, and the move is now legal (passes normal legality for realtime rules). Otherwise stays armed until target becomes legal; cancel if the piece disappears or target square goes off-board (never) or piece changes side.  
+- Rendering premove arrow still uses premove target; cooldown loop calls updated premove processor with new validity logic.  
+- Pawn specifics: include diagonals even if empty (imaginary capture); forward squares even if currently blocked (marked blocked). Double-move included? (needs clarification).  
+- Castling/en passant: likely excluded from premove “valid squares” unless you want them; otherwise keep simple (no castle/EP premoves).
+
+Clarifying questions
+1) For pawns, should the double-step be included as a valid premove square even if blocked, or limit to single-step/diagonals?  
+2) Should castling be allowed as a premove destination (rook/king), or skip castling entirely in this realtime variant?  
+3) For capture highlighting: if a target currently holds an enemy but is blocked along the path, do you still want the capture styling (at 50% opacity), or treat it as a normal blocked square?
+
+--------------------------------------------------------------------------------
+
+Prompt #82:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T22:06:00.708000+01:00
+Prompt:
+1. For pawns, yes double step is considered a valid move (might be blocked though)
+2. Yes, castling can be a premove destination
+3. If path is blocked, then opacity 50%
+let's implement
+Response:
+Implemented the new “geometry-first” premove system.
+
+- Added potential move tracking in `state.js` to list every geometrically valid square (ignoring blockers), including pawn doubles and castling, and to label current legality/blocked status. Premoves now store from/to (+promo when known) and fire once the move becomes legal and the piece is off cooldown; they’re cleared if the piece disappears or the target is no longer a valid pattern.
+- Updated interaction logic in `index.js` to classify clicks/drags as invalid/execute/premove per the new rules (off‑cooldown executes legal, otherwise premoves any valid-but-illegal or cooldown move). Premoves can target friendly pieces to auto-retake, distant captures, etc.
+- UI now highlights all valid geometry squares with normal intensity for currently legal targets and 50% opacity when blocked, applying capture styling accordingly; hover/darkening follows these potentials. Added CSS for blocked targets and capture overlays.
+
+Files touched: `state.js`, `index.js`, `ui.js`, `styles.css`.
+
+Try selecting a rook at the start: you should see targets all the way down the file to the opposing rook (blocked highlights at 50%). Dropping on a blocked square sets a premove (arrow), which auto-executes once the path clears and cooldown ends.
+
+--------------------------------------------------------------------------------
+
+Prompt #83:
+Id: 019ab23f-1d2c-7a10-955a-574a704ba1c5
+Timestamp: 2025-11-23T22:47:36.485000+01:00
+Prompt:
+Let's change the pre-move logic to the following: any piece can be pre-moved to all the squares it can go on its next move, even ignoring obstacles. Eg the rook at the
+  start can be premoved to capture the opposing rook, even if there are the pawns blocking the path. Another example: a bishop can be premoved to an empty square even if
+  blocked by a pawn. Pawns themselves can be premoved to capture an "imaginary piece"
+  Then, whenever the premove location (so simply move or capture) becomes a legal move, then the move is executed.
+
+  When moving a piece, the following logic happens:
+  If the piece is off-cooldown:
+    if the move is to an invalid square: nothing happens
+    if the move is legal: move is executed
+    if the move is to a valid square but illegal (blocked by own or opposing piece): the priece is pre-moved
+  IF the piece is on-cooldown:
+    if the move is to an invalid square: nothing happens
+    if the move is legal: the piece is pre-moved
+    if the move is to a valid square but illegal: the piece is pre-moved
+
+  The UI should now show the green dots & capture highlights depending on all possible valid squares this piece can go to. For the "illegal moves but on valid squares", the
+  highlight has opacity 50%.
+
+  First make a plan to implement this, and ask clarifying questions to be sure of it
+Response:
+To implement this cleanly I need a couple clarifications:
+
+- When you say “valid square” vs “legal,” I’m assuming “valid” means the square is in the piece’s move pattern (ignoring obstacles/occupancy/cooldown), and “legal” adds current board rules/obstacles/turn/etc. Correct?
+- For premoves that later become legal, do we execute immediately when they become legal (even mid-opponent-move) or only when it’s the player’s turn and the move is now legal?
+- If multiple premoves become legal in sequence (e.g., piece was premoved, then state changes twice), do we execute just once on the first legality check and then clear the premove?
+- For UI: should 50% opacity apply to all “pattern squares currently blocked/illegal” and full opacity for squares that are legal right now? And capture highlights follow the same opacity rule?
+
+--------------------------------------------------------------------------------
+
+Prompt #84:
+Id: 019ab23f-1d2c-7a10-955a-574a704ba1c5
+Timestamp: 2025-11-23T22:55:11.335000+01:00
+Prompt:
+- With valid square, I mean a square the current piece can go to assuming it isn't blocked by anything (so yes, move pattern). Legal includes everything: rules wether the piece can actually go there
+- For premoves that become legal, they are executed right away. There is no player's turn, everything is real time
+- All premoves are queued and executed as fast as possible one after the other if many become legal at once. The queue order is the clock time of the premove
+- yes
+let's implement
+Response:
+Implemented the new premove/valid-square rules and UI cues.
+
+- Added pattern move generation ignoring obstacles (`rules.js`) so every piece exposes its full next-move geometry (including pawn diagonals and double-step).
+- State now tracks those pattern moves, stores premoves with timestamps/promotion hints, and processes them in queue order whenever the piece is off cooldown and the move becomes legal (`state.js`).
+- Interaction logic now routes all attempts through the new rules: invalid squares do nothing; off-cooldown executes if legal else queues a premove; on-cooldown queues a premove on any valid pattern square. Premove timestamps preserve execution order (`index.js`).
+- Board highlights show all pattern squares: current-legal targets/captures at full opacity, blocked-but-valid targets/captures at 50% (`ui.js`, `styles.css`).
+
+Next steps: manually verify by selecting pieces (on/off cooldown), premoving to blocked squares, and watching queued premoves execute in timestamp order as soon as paths clear.
+
+--------------------------------------------------------------------------------
+
+Prompt #85:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:03:06.169000+01:00
+Prompt:
+I do not see the targets all the way down the file. Try to find what's wrong. It looks like no changes were made
+Response:
+I fixed the “targets to the edge” visibility and hover targeting:
+
+- Highlights now render above pieces: target dots/capture overlays got higher z-index and pieces are positioned with a lower z-index so blocked targets remain visible even on occupied squares. Hover detection during drag now uses full pattern targets, not just currently-legal moves.
+- The overlay opacity and styling remain unchanged; only layering/hover logic was adjusted to ensure you actually see the pattern moves all the way down files/diagonals.
+
+Changes: `styles.css`, `ui.js`.
+
+Please reload and select a back-rank rook: you should now see targets along the entire file/rank (blocked ones at 50% opacity) and hovering/dragging works over those squares.
+
+--------------------------------------------------------------------------------
+
+Prompt #86:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:08:27.411000+01:00
+Prompt:
+Let's make a few unit tests. Let's start with a test case that shows that on the starting board, the left-most white pawn can be premoved 1 tile forward, 2 tiles forward, or one tile forward and to the right (as if to take a piece there)
+Response:
+Added a simple unit test for pawn premove patterns. The new test (`tests/premove.test.mjs`) checks that the starting a2 pawn advertises the expected premove targets: one-step forward, two-step forward, and the diagonal capture pattern to b3 (and no extras). Run with `node tests/premove.test.mjs`.
+
+--------------------------------------------------------------------------------
+
+Prompt #87:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:09:49.675000+01:00
+Prompt:
+(base) ➜  rtchess git:(main) node tests/premove.test.mjs
+nvm_load:.:1: no such file or directory: /Users/pinouchon/.nvm/nvm.sh
+nvm_load:.:2: no such file or directory: /Users/pinouchon/.nvm/bash_completion
+premove tests passed
+(node:52897) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/pinouchon/code/rtchess/rules.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/pinouchon/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(base) ➜  rtchess git:(main) ✗
+Response:
+Test ran and passed. The only output is from missing nvm init files and Node treating the code as ESM without `"type": "module"`. If you want to remove the warnings, either source your nvm setup or add a `package.json` with `"type": "module"` (or run with `node --input-type=module`).
+
+--------------------------------------------------------------------------------
+
+Prompt #88:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:11:40.954000+01:00
+Prompt:
+despite the test passing, the board still doesn't display the premove possibility for b3 (for the b2 pawn). Try to find out what can be wrong
+Response:
+I confirmed the pattern generation is working (e.g., selecting a2 produces patterns to a3, a4, and b3), so the logic is correct. The missing visual cues were likely due to subtle styling. I’ve made the premove indicators much more visible:
+
+- Enlarged the target dots and added a contrasting ring.
+- Increased opacity on blocked targets and capture overlays so blocked paths stand out.
+- Kept z-index high so overlays sit above pieces.
+
+Files touched: `styles.css`.
+
+Please reload and select a pawn; you should now clearly see the b3 premove (and other pattern squares) rendered on the board.
+
+--------------------------------------------------------------------------------
+
+Prompt #89:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:16:22.615000+01:00
+Prompt:
+When selecting a pawn, use console logs to show the details of the calculation of the pre-move locations, as well as the result. And any other interesting info so we can debug
+Response:
+Added debug logging when selecting a pawn. On pawn selection, the console now prints pattern (premove) targets with types and current legal moves (including captures/promotions). This should help inspect why premove highlights appear or not.
+
+--------------------------------------------------------------------------------
+
+Prompt #90:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:17:38.184000+01:00
+Prompt:
+I don't see any console logs. Add console log at other places so we understand if this is a refresh issue or where we stop getting console logs
+Response:
+Added more console tracing to pinpoint where things stop:
+
+- `state.js`: logs when a square is selected and when premoves execute or remain blocked.
+- `index.js`: logs each square click with index, piece, and current selection.
+- `ui.js`: logs drag start events.
+
+These should help identify whether selection, pattern generation, or rendering is the issue.
+
+--------------------------------------------------------------------------------
+
+Prompt #91:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:19:17.880000+01:00
+Prompt:
+I see the moves in the move list. Change the move list format from : 
+b2-b4 
+to 
+[test] b2-b4
+Response:
+Move list entries now display in the format `[test] b2-b4` (with the previous notation prefixed by `[test]`). The change is in `state.js`’s `moveToString`.
+
+--------------------------------------------------------------------------------
+
+Prompt #92:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:22:36.909000+01:00
+Prompt:
+The problem was my browser not refreshing the javascript file properly. We can go back to undoing the changes about the logging, the [test] move list, as well as this one:
+
+• Edited styles.css (+6 -4)
+    246    content: "";
+    247 -  width: 18px;
+    248 -  height: 18px;
+    247 +  width: 24px;
+    248 +  height: 24px;
+    249    border-radius: 50%;
+        ⋮
+    253    z-index: 3;
+    254 +  box-shadow: 0 0 0 2px rgba(15, 17, 21, 0.45);
+    255  }
+        ⋮
+    257  .square.target-blocked::after {
+    257 -  opacity: 0.5;
+    258 +  opacity: 0.55;
+    259 +  box-shadow: 0 0 0 2px rgba(15, 17, 21, 0.3);
+    260  }
+        ⋮
+    276  .square.capture.target-blocked::before {
+    275 -  opacity: 0.5;
+    277 +  opacity: 0.55;
+    278  }
+
+
+And this one:
+
+• Edited styles.css (+2 -1)
+    250    position: absolute;
+    251 -  z-index: 1;
+    251 +  z-index: 3;
+    252  }
+        ⋮
+    268    pointer-events: none;
+    269 +  z-index: 2;
+    270  }
+
+• Edited ui.js (+2 -2)
+    73    const targetIdx = pointerToBoardIdx(event.clientX, event.clientY);
+    74 -  const legalTargets = new Set(state.legalMoves.map((m) => m.to));
+    75 -  state.hoverTarget = targetIdx !== null && legalTargets.has(targetIdx) ? targetIdx : null;
+    74 +  const patternTargets = new Set(state.patternMoves.map((m) => m.to));
+    75 +  state.hoverTarget = targetIdx !== null && patternTargets.has(targetIdx) ? targetIdx : null;
+    76    updateHighlights();
+
+• Edited styles.css (+2 -0)
+    186    transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+    187 +  position: relative;
+    188 +  z-index: 2;
+    189  }
+
+And let's keep the tests and the basic pre-move implementation
+Response:
+Reverted the temporary debugging/visual tweaks and move-list prefix while keeping premove logic and tests:
+
+- Removed console logging in `state.js`, `index.js`, and `ui.js`.
+- Restored move list notation to the original format (no `[test]` prefix).
+- Reverted highlight styling changes: target dots back to 18px with original opacity, no added box shadows; z-indexes reset; pieces no longer forced to be relative/z-indexed; hover target detection uses legal moves again.
+- Kept the premove tests and core functionality intact.
+
+Files touched: `state.js`, `index.js`, `ui.js`, `styles.css`.
+
+--------------------------------------------------------------------------------
+
+Prompt #93:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:25:38.246000+01:00
+Prompt:
+Let's make it so when a pre-moved piece is selected again, then the pre-move is cancelled on first click
+Response:
+Updated click handling so a premoved piece cancels its premove on the first click and is immediately selected. The clear-and-select now happens in one step, keeping interactions smooth. File changed: `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #94:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:26:58.367000+01:00
+Prompt:
+Let's undo this last change
+Response:
+Reverted the last change: clicking a square with a premove now just cancels it and exits (does not auto-select the piece). Updated `index.js`.
+
+--------------------------------------------------------------------------------
+
+Commit #11:
+Hash: 494cea594097d950e5b7a60e8738a3740911278f
+Timestamp: 2025-11-23T23:29:38+01:00
+Message:
+premove mostly working
+
+--------------------------------------------------------------------------------
+
