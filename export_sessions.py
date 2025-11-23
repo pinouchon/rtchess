@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -38,6 +39,8 @@ def session_matches(session_cwd: str) -> bool:
 
 def gather_sessions() -> Dict[str, dict]:
     sessions_dir = Path.home() / ".codex" / "sessions"
+    if not sessions_dir.exists():
+        return {}
     sessions: Dict[str, dict] = {}
     for path in sessions_dir.rglob("*.jsonl"):
         current_sid: Optional[str] = None
@@ -100,50 +103,106 @@ def gather_sessions() -> Dict[str, dict]:
     return {sid: data for sid, data in sessions.items() if data.get("relevant") and data.get("events")}
 
 
+def gather_commits() -> List[dict]:
+    cmd = [
+        "git",
+        "-C",
+        str(PROJECT_ROOT),
+        "log",
+        "--pretty=format:%H%x1f%ct%x1f%B%x1e",
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return []
+    if result.returncode != 0 or not result.stdout:
+        return []
+    commits: List[dict] = []
+    for record in result.stdout.split("\x1e"):
+        if not record.strip():
+            continue
+        parts = record.split("\x1f")
+        if len(parts) < 3:
+            continue
+        hash_str = parts[0].strip()
+        ts_raw = parts[1].strip()
+        message = "\x1f".join(parts[2:]).strip()
+        try:
+            ts_val = float(ts_raw)
+        except Exception:
+            ts_val = 0.0
+        commits.append({"ts": ts_val, "hash": hash_str, "message": message})
+    return commits
+
+
 def build_prompts(events: List[dict]) -> List[dict]:
     prompts: List[dict] = []
+    last_prompt_by_sid: Dict[str, dict] = {}
     for event in sorted(events, key=lambda e: e.get("ts") or 0.0):
         role = event.get("role")
         text = event.get("text", "")
         ts = event.get("ts") or 0.0
         sid = event.get("sid", "")
         if role == "user":
-            prompts.append({"ts": ts, "prompt": text, "responses": [], "sid": sid})
-        elif role == "assistant" and prompts and prompts[-1].get("sid") == sid:
-            prompts[-1]["responses"].append(text)
+            prompt_entry = {"ts": ts, "prompt": text, "responses": [], "sid": sid}
+            prompts.append(prompt_entry)
+            if sid:
+                last_prompt_by_sid[sid] = prompt_entry
+        elif role == "assistant" and sid and sid in last_prompt_by_sid:
+            last_prompt_by_sid[sid]["responses"].append(text)
     return prompts
 
 
-def write_history(prompts: List[dict], out_path: Path) -> None:
+def build_entries(prompts: List[dict], commits: List[dict]) -> List[dict]:
+    entries: List[dict] = []
+    for p in prompts:
+        entries.append({"type": "prompt", **p})
+    for c in commits:
+        entries.append({"type": "commit", **c})
+    return sorted(entries, key=lambda e: e.get("ts") or 0.0)
+
+
+def write_history(entries: List[dict], out_path: Path) -> None:
     with out_path.open("w", encoding="utf-8") as f:
         f.write(f"{SEPARATOR}\n\n")
-        for idx, prompt in enumerate(prompts, start=1):
-            f.write(f"Prompt #{idx}:\n")
-            f.write(f"Id: {prompt.get('sid', '')}\n")
-            f.write(f"Timestamp: {ts_display(prompt.get('ts') or 0.0)}\n")
-            f.write("Prompt:\n")
-            f.write(f"{prompt.get('prompt', '')}\n")
-            f.write("Response:\n")
-            response_text = "\n\n".join(prompt.get("responses") or [])
-            f.write(f"{response_text}\n\n")
+        prompt_counter = 0
+        commit_counter = 0
+        for entry in entries:
+            if entry.get("type") == "prompt":
+                prompt_counter += 1
+                f.write(f"Prompt #{prompt_counter}:\n")
+                f.write(f"Id: {entry.get('sid', '')}\n")
+                f.write(f"Timestamp: {ts_display(entry.get('ts') or 0.0)}\n")
+                f.write("Prompt:\n")
+                f.write(f"{entry.get('prompt', '')}\n")
+                f.write("Response:\n")
+                response_text = "\n\n".join(entry.get("responses") or [])
+                f.write(f"{response_text}\n\n")
+            else:
+                commit_counter += 1
+                f.write(f"Commit #{commit_counter}:\n")
+                f.write(f"Hash: {entry.get('hash', '')}\n")
+                f.write(f"Timestamp: {ts_display(entry.get('ts') or 0.0)}\n")
+                f.write("Message:\n")
+                f.write(f"{entry.get('message', '')}\n\n")
             f.write(f"{SEPARATOR}\n\n")
 
 
 def main() -> None:
     sessions = gather_sessions()
-    if not sessions:
-        print("No relevant sessions found.")
-        return
     all_events: List[dict] = []
-    ordered = sorted(sessions.items(), key=lambda item: item[1].get("meta_ts") or 0.0)
-    for _sid, data in ordered:
-        all_events.extend(data.get("events") or [])
+    if sessions:
+        ordered = sorted(sessions.items(), key=lambda item: item[1].get("meta_ts") or 0.0)
+        for _sid, data in ordered:
+            all_events.extend(data.get("events") or [])
     prompts = build_prompts(all_events)
-    if not prompts:
-        print("No prompts found in matching sessions.")
+    commits = gather_commits()
+    if not prompts and not commits:
+        print("No prompts or commits found.")
         return
-    write_history(prompts, PROJECT_ROOT / "history.md")
-    print(f"Wrote {len(prompts)} prompts to history.md")
+    entries = build_entries(prompts, commits)
+    write_history(entries, PROJECT_ROOT / "history.md")
+    print(f"Wrote {len(entries)} entries (prompts: {len(prompts)}, commits: {len(commits)}) to history.md")
 
 
 if __name__ == "__main__":

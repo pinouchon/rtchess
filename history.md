@@ -183,6 +183,14 @@ Serve with `python3 -m http.server 8000`, reload, and drag a piece—the piece w
 
 --------------------------------------------------------------------------------
 
+Commit #1:
+Hash: dc0d1f0da10890e741ef98cd05c4337c569b7fbe
+Timestamp: 2025-11-22T22:38:08+01:00
+Message:
+basic working game
+
+--------------------------------------------------------------------------------
+
 Prompt #12:
 Id: 019aad50-a7e6-7422-b7a8-0b384290624f
 Timestamp: 2025-11-22T22:38:15.355000+01:00
@@ -372,6 +380,14 @@ Reverted hover styling back to the inset shadow (`box-shadow: inset 0 0 0 9999px
 
 --------------------------------------------------------------------------------
 
+Commit #2:
+Hash: 8570bc19a95fa4b92d3ecca8985b475a2e3bc32e
+Timestamp: 2025-11-22T23:02:42+01:00
+Message:
+improve drag & drop and ui
+
+--------------------------------------------------------------------------------
+
 Prompt #26:
 Id: 019aad50-a7e6-7422-b7a8-0b384290624f
 Timestamp: 2025-11-22T23:03:33.717000+01:00
@@ -523,6 +539,14 @@ Overall: **1,134** lines.
 
 --------------------------------------------------------------------------------
 
+Commit #3:
+Hash: c9fa1a6171c67f82f0f8d7235e7ec01e9ccc0246
+Timestamp: 2025-11-22T23:12:36+01:00
+Message:
+refactor in multiple files
+
+--------------------------------------------------------------------------------
+
 Prompt #33:
 Id: 019aad50-a7e6-7422-b7a8-0b384290624f
 Timestamp: 2025-11-22T23:16:54.052000+01:00
@@ -648,6 +672,14 @@ Gameplay remains king-capture-only; you can move any off-cooldown piece regardle
 
 --------------------------------------------------------------------------------
 
+Commit #4:
+Hash: 95c378ed4c59d793d5cbfdce34c3084121f6d5ed
+Timestamp: 2025-11-22T23:39:51+01:00
+Message:
+basic real time version controlled by a single player. No premove yet
+
+--------------------------------------------------------------------------------
+
 Prompt #41:
 Id: 019aad50-a7e6-7422-b7a8-0b384290624f
 Timestamp: 2025-11-22T23:42:09.479000+01:00
@@ -660,6 +692,14 @@ README updated for the real-time, single-player-controlled mode:
 - Highlights cooldown rules (3s start, 10s after moves), visual ring, free movement, check is visual only, game ends on king capture.
 - Notes disabled side/difficulty selectors, no AI, cburnett pieces, and entrypoint `index.js`.
 - Run instructions unchanged (serve over HTTP).
+
+--------------------------------------------------------------------------------
+
+Commit #5:
+Hash: b1547ad860458af439545bd215f3e19f2a08077f
+Timestamp: 2025-11-22T23:43:30+01:00
+Message:
+updated readme
 
 --------------------------------------------------------------------------------
 
@@ -1008,6 +1048,14 @@ Make sure `codex` CLI is available for the exports to succeed.
 
 --------------------------------------------------------------------------------
 
+Commit #6:
+Hash: b8d8edfa27b5f325c8e37ea6a27799488d135413
+Timestamp: 2025-11-23T19:45:11+01:00
+Message:
+basic pre-move and session history export
+
+--------------------------------------------------------------------------------
+
 Prompt #58:
 Id: 019aad50-a7e6-7422-b7a8-0b384290624f
 Timestamp: 2025-11-23T19:46:19.977000+01:00
@@ -1154,6 +1202,14 @@ Restored full session data export:
 - Running `python3 export_history.py` now produces per-session JSONL with full entries (including `event_msg`, `turn_context`, and assistant responses) and corresponding history markdown.
 
 Use `python3 export_history.py` from repo root to export all detected sessions with complete data.
+
+--------------------------------------------------------------------------------
+
+Commit #7:
+Hash: 4272a68afdf63f79a34d5956e90413609dbcbeff
+Timestamp: 2025-11-23T20:21:34+01:00
+Message:
+fix session history
 
 --------------------------------------------------------------------------------
 
@@ -1373,6 +1429,43 @@ Running "python3 export_history.py" should give a ..._history.md file that conta
 Response:
 Response:
 Updated `export_sessions.py` to carry session IDs through parsing and include an `Id:` line in each block when writing `history.md`, only pairing responses with prompts from the same session. Run `python3 export_sessions.py` to regenerate the file.
+
+--------------------------------------------------------------------------------
+
+Commit #8:
+Hash: a3150e9291ac66793153dc21a64342aa89d49ec9
+Timestamp: 2025-11-23T20:57:27+01:00
+Message:
+simpler export_session.py
+
+--------------------------------------------------------------------------------
+
+Prompt #75:
+Id: 019ab23f-1d2c-7a10-955a-574a704ba1c5
+Timestamp: 2025-11-23T21:12:47.471000+01:00
+Prompt:
+Now, in the export_sessions.py script, also get the git commit history, parse them, so the blocks can be either a commit or a prompt like the following. Order the blocks by timestamp ascending.
+
+
+--------------------------------------------------------------------------------
+
+Prompt #72:
+Id: 019ab23f-1d2c-7a10-955a-574a704ba1c5
+Timestamp: 2025-11-23T20:48:38.426000+01:00
+Prompt:
+write a simple python script export_sessions.py that will look for all recent codex sessions, parse them, and then write a history.md file with the following format:
+
+--------------------------------------------------------------------------------
+
+Commit #1:
+Hash: <hash here>
+Timestamp: <timestamp here>
+Message:
+<commit message here>
+
+...
+Response:
+Integrated git commit history into `export_sessions.py`: it now scrapes commits via `git log`, merges them with Codex prompts, sorts everything by timestamp ascending, and writes mixed prompt/commit blocks that include session IDs and commit hashes/messages. Prompt-response pairing is now tracked per session ID to avoid misaligned replies. Regenerate with `python3 export_sessions.py` to update `history.md`.
 
 --------------------------------------------------------------------------------
 
