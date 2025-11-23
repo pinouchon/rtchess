@@ -11,13 +11,24 @@ def run(cmd, cwd):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python3 export_history.py <session_id>")
-        sys.exit(1)
-    session_id = sys.argv[1]
+    # No args: enumerate sessions via find_sessions.py and export each
     dev_dir = Path(__file__).resolve().parent / "dev_history"
-    run(["python3", "export_codex_session.py", session_id], cwd=dev_dir)
-    run(["python3", "export_development_history.py", session_id], cwd=dev_dir)
+    # get session list
+    result = subprocess.run(
+        ["python3", "find_sessions.py"],
+        cwd=dev_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+    session_tags = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not session_tags:
+        print("No sessions found.")
+        sys.exit(0)
+    for tag in session_tags:
+        run(["python3", "export_codex_session.py", tag], cwd=dev_dir)
+        run(["python3", "export_development_history.py", tag], cwd=dev_dir)
 
 
 if __name__ == "__main__":

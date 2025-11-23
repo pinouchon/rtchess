@@ -94,18 +94,20 @@ def write_md(prompts: List[Dict[str, Any]], out_path: Path) -> None:
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("Usage: python3 export_development_history.py <session_id>")
+        print("Usage: python3 export_development_history.py <session_tag>")
         sys.exit(1)
-    session_id = sys.argv[1]
+    session_tag = sys.argv[1]
+    session_id = session_tag.split("_")[0]
     base = Path(__file__).resolve().parent
-    export_path = base / "exported-session.jsonl"
+    export_path = base / f"{session_tag}.jsonl"
     events = load_exported(session_id, export_path)
     if not events:
-        print("No events found in exported-session.jsonl; run export_codex_session.py first.")
+        print(f"No events found in {export_path}; run export_codex_session.py first.")
         sys.exit(0)
     prompts = build_prompts(events)
-    write_md(prompts, base / "prompt_history.md")
-    print(f"Wrote {len(prompts)} prompts to {base / 'prompt_history.md'}")
+    out_path = base / f"{session_tag}_history.md"
+    write_md(prompts, out_path)
+    print(f"Wrote {len(prompts)} prompts to {out_path}")
 
 
 if __name__ == "__main__":
