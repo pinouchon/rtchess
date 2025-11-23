@@ -24,8 +24,8 @@ const elements = {};
 let currentMode = "gametesting";
 let currentRole = "solo";
 let currentGameId = null;
-let statusPoll = null;
 let serverAvailable = true;
+let statusPoll = null;
 
 function getStatusText() {
   return state.gameOver ? "Game over" : currentMode === "pvp" ? "PvP setup" : "Free play";
@@ -155,36 +155,76 @@ function buildInviteLink(gameId) {
   return url.toString();
 }
 
-const API_BASE = `${window.location.origin}/api/pvp`;
-
-async function apiJoin(role, gameId) {
-  const res = await fetch(`${API_BASE}/join`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role, gameId }),
-  });
-  if (!res.ok) throw new Error("join failed");
-}
-
-async function apiStatus(gameId) {
-  const res = await fetch(`${API_BASE}/status?game=${encodeURIComponent(gameId)}`);
-  if (!res.ok) throw new Error("status failed");
-  return res.json();
-}
-
-async function apiStart(gameId) {
-  const res = await fetch(`${API_BASE}/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ gameId }),
-  });
-  if (!res.ok) throw new Error("start failed");
-}
+const WS_BASE = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+let ws = null;
+let wsConnected = false;
 
 function updateModePill() {
   const pill = elements.modePill;
   pill.textContent =
     currentMode === "pvp" ? "Realtime chess - PvP" : "Realtime chess - gametesting";
+}
+
+function disconnectWs() {
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  wsConnected = false;
+  serverAvailable = true;
+}
+
+function connectWs(gameId, role) {
+  disconnectWs();
+  try {
+    ws = new WebSocket(`${WS_BASE}?game=${encodeURIComponent(gameId)}&role=${role}`);
+  } catch (e) {
+    serverAvailable = false;
+    updateInviteUI();
+    return;
+  }
+  ws.onopen = () => {
+    wsConnected = true;
+    serverAvailable = true;
+    updateInviteUI();
+  };
+  ws.onclose = () => {
+    wsConnected = false;
+    serverAvailable = false;
+    updateInviteUI();
+  };
+  ws.onerror = () => {
+    wsConnected = false;
+    serverAvailable = false;
+    updateInviteUI();
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+      if (data.type === "state" && data.state) {
+        const wasStarted = state.session.gameStarted;
+        setOpponentJoined(!!data.state.guest);
+        setGameStarted(!!data.state.started);
+        if (data.state.started && !wasStarted) startInitialCooldowns();
+        updateInviteUI();
+        renderAll(getStatusText(), getSubStatus());
+      }
+      if (data.type === "joined") {
+        setOpponentJoined(true);
+        updateInviteUI();
+        renderAll(getStatusText(), getSubStatus());
+      }
+      if (data.type === "started") {
+        const wasStarted = state.session.gameStarted;
+        setGameStarted(true);
+        if (!wasStarted) startInitialCooldowns();
+        updateInviteUI();
+        renderAll("Game started", getSubStatus());
+      }
+    } catch (err) {
+      // ignore parse errors
+    }
+  };
 }
 
 function updateInviteUI() {
@@ -203,7 +243,7 @@ function updateInviteUI() {
   elements.startGameBtn.disabled = !isHost || !state.session.opponentJoined || state.session.gameStarted;
   elements.startGameBtn.classList.toggle("hidden", !isHost);
   if (!serverAvailable) {
-    elements.pvpStatus.textContent = "PvP server unavailable. Run python3 server.py";
+    elements.pvpStatus.textContent = "PvP server unavailable. Run node server.js";
     return;
   }
   elements.pvpStatus.textContent = state.session.opponentJoined
@@ -236,31 +276,7 @@ function updateMode(newMode) {
     setOrientation("w");
     setOpponentJoined(false);
     setGameStarted(false);
-    apiJoin("host", currentGameId)
-      .then(() => {
-        serverAvailable = true;
-      })
-      .catch(() => {
-        serverAvailable = false;
-      })
-      .finally(() => updateInviteUI());
-    if (statusPoll) clearInterval(statusPoll);
-    statusPoll = setInterval(() => {
-      apiStatus(currentGameId)
-        .then((s) => {
-          const wasStarted = state.session.gameStarted;
-          setOpponentJoined(!!s.guest);
-          setGameStarted(!!s.started);
-          if (s.started && !wasStarted) startInitialCooldowns();
-          serverAvailable = true;
-          updateInviteUI();
-          renderAll(getStatusText(), getSubStatus());
-        })
-        .catch(() => {
-          serverAvailable = false;
-          updateInviteUI();
-        });
-    }, 2000);
+    connectWs(currentGameId, currentRole);
   } else {
     currentRole = "solo";
     setRole("solo");
@@ -268,10 +284,7 @@ function updateMode(newMode) {
     setGameStarted(false);
     currentGameId = null;
     setGameId(null);
-    if (statusPoll) {
-      clearInterval(statusPoll);
-      statusPoll = null;
-    }
+    disconnectWs();
   }
   newGame();
   updateInviteUI();
@@ -290,60 +303,12 @@ function initFromUrl() {
       currentRole = "guest";
       setRole("guest");
       setOrientation("b");
-      apiJoin("guest", gameId)
-        .then(() => {
-          serverAvailable = true;
-        })
-        .catch(() => {
-          serverAvailable = false;
-        })
-        .finally(() => updateInviteUI());
-      setOpponentJoined(true);
-      if (statusPoll) clearInterval(statusPoll);
-      statusPoll = setInterval(() => {
-        apiStatus(gameId)
-          .then((s) => {
-            const wasStarted = state.session.gameStarted;
-            setGameStarted(!!s.started);
-            if (s.started && !wasStarted) startInitialCooldowns();
-            serverAvailable = true;
-            updateInviteUI();
-            renderAll(getStatusText(), getSubStatus());
-          })
-          .catch(() => {
-            serverAvailable = false;
-            updateInviteUI();
-          });
-      }, 2000);
+      connectWs(gameId, currentRole);
     } else {
       currentRole = "host";
       setRole("host");
       setOrientation("w");
-      apiJoin("host", gameId)
-        .then(() => {
-          serverAvailable = true;
-        })
-        .catch(() => {
-          serverAvailable = false;
-        })
-        .finally(() => updateInviteUI());
-      if (statusPoll) clearInterval(statusPoll);
-      statusPoll = setInterval(() => {
-        apiStatus(gameId)
-          .then((s) => {
-            const wasStarted = state.session.gameStarted;
-            setOpponentJoined(!!s.guest);
-            setGameStarted(!!s.started);
-            if (s.started && !wasStarted) startInitialCooldowns();
-            serverAvailable = true;
-            updateInviteUI();
-            renderAll(getStatusText(), getSubStatus());
-          })
-          .catch(() => {
-            serverAvailable = false;
-            updateInviteUI();
-          });
-      }, 2000);
+      connectWs(gameId, currentRole);
     }
   }
 }
@@ -418,7 +383,9 @@ function init() {
     startInitialCooldowns();
     updateInviteUI();
     renderAll("Game started", getSubStatus());
-    apiStart(currentGameId).catch(() => {});
+    if (wsConnected && ws) {
+      ws.send(JSON.stringify({ type: "start", gameId: currentGameId }));
+    }
   });
 
   newGame();
