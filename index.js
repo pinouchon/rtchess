@@ -24,6 +24,43 @@ function getSubStatus() {
   return "Move any ready piece";
 }
 
+function isValidTarget(idx) {
+  return state.patternMoves.some((m) => m.to === idx);
+}
+
+function findLegalMove(idx) {
+  return state.legalMoves.find((m) => m.to === idx);
+}
+
+function handleMoveIntent(targetIdx) {
+  const fromIdx = state.selected;
+  if (fromIdx === null) return "none";
+  if (!isValidTarget(targetIdx)) return "none";
+
+  const legalMove = findLegalMove(targetIdx);
+  const onCooldown = isOnCooldown(fromIdx);
+
+  if (!onCooldown && legalMove) {
+    if (legalMove.promotion) {
+      showPromotion(legalMove);
+      return "promotion";
+    }
+    executeMove(legalMove);
+    return "move";
+  }
+
+  const piece = state.game.board[fromIdx];
+  if (!piece) return "none";
+  setPremove({
+    from: fromIdx,
+    to: targetIdx,
+    piece,
+    promotion: legalMove ? legalMove.promotion : null,
+  });
+  clearSelection();
+  return "premove";
+}
+
 function handleSquareClick(idx) {
   if (state.gameOver) return;
   const piece = state.game.board[idx];
@@ -37,7 +74,9 @@ function handleSquareClick(idx) {
     if (piece && canSelect(idx)) {
       selectSquare(idx);
       renderAll(getStatusText(), getSubStatus());
+      return;
     }
+    renderAll(getStatusText(), getSubStatus());
     return;
   }
 
@@ -47,22 +86,12 @@ function handleSquareClick(idx) {
     return;
   }
 
-  const chosenMove = state.legalMoves.find((m) => m.to === idx);
-  if (chosenMove) {
-    const cd = isOnCooldown(chosenMove.from);
-    if (cd) {
-      setPremove(chosenMove);
-      clearSelection();
-      renderAll(getStatusText(), getSubStatus());
-      return;
-    }
-    if (chosenMove.promotion) {
-      showPromotion(chosenMove);
-    } else {
-      executeMove(chosenMove);
-    }
+  const action = handleMoveIntent(idx);
+  if (action === "premove") {
+    renderAll(getStatusText(), getSubStatus());
     return;
   }
+  if (action === "move" || action === "promotion") return;
 
   if (piece && canSelect(idx)) {
     selectSquare(idx);
@@ -79,23 +108,11 @@ function executeMove(move) {
 
 function handleDrop(targetIdx) {
   if (state.selected === null) return;
-  const chosenMove = state.legalMoves.find((m) => m.to === targetIdx);
-  if (!chosenMove) {
-    clearSelection();
+  const action = handleMoveIntent(targetIdx);
+  if (action === "premove") {
     renderAll(getStatusText(), getSubStatus());
-    return;
-  }
-  const cd = isOnCooldown(chosenMove.from);
-  if (cd) {
-    setPremove(chosenMove);
-    clearSelection();
+  } else if (action === "none") {
     renderAll(getStatusText(), getSubStatus());
-    return;
-  }
-  if (chosenMove.promotion) {
-    showPromotion(chosenMove);
-  } else {
-    executeMove(chosenMove);
   }
 }
 

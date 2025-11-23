@@ -116,16 +116,32 @@ export function updateHighlights() {
   if (!elements.board) return;
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
   const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
+  const patternMap = new Map(state.patternMoves.map((m) => [m.to, m]));
+  const selectedPiece = state.selected !== null ? state.game.board[state.selected] : null;
   elements.board.querySelectorAll(".square").forEach((square) => {
     const idx = Number(square.dataset.square);
-    square.classList.remove("highlight", "target", "capture", "hover-target");
+    const patternEntry = patternMap.get(idx);
+    const occupant = state.game.board[idx];
+    const captureStyle =
+      (patternEntry && patternEntry.type === "capture") ||
+      (patternEntry &&
+        patternEntry.type === "either" &&
+        occupant &&
+        selectedPiece &&
+        pieceColor(occupant) !== pieceColor(selectedPiece)) ||
+      captureSquares.has(idx);
+    square.classList.remove("highlight", "target", "target-blocked", "capture", "hover-target");
     if (state.selected === idx) square.classList.add("highlight");
     if (state.lastMove && (state.lastMove.from === idx || state.lastMove.to === idx)) {
       square.classList.add("last-move");
     }
-    if (state.selected !== null && targetSquares.has(idx)) {
-      square.classList.add("target");
-      if (captureSquares.has(idx)) square.classList.add("capture");
+    if (state.selected !== null && patternEntry) {
+      if (targetSquares.has(idx)) {
+        square.classList.add("target");
+      } else {
+        square.classList.add("target-blocked");
+      }
+      if (captureStyle) square.classList.add("capture");
     }
     if (state.hoverTarget === idx) square.classList.add("hover-target");
     if (state.inCheck.w && state.game.board[idx] === "K") square.classList.add("check");
@@ -138,6 +154,8 @@ export function renderBoard() {
   const displaySquares = getDisplayOrder();
   const targetSquares = new Set(state.legalMoves.map((m) => m.to));
   const captureSquares = new Set(state.legalMoves.filter((m) => m.captured).map((m) => m.to));
+  const patternMap = new Map(state.patternMoves.map((m) => [m.to, m]));
+  const selectedPiece = state.selected !== null ? state.game.board[state.selected] : null;
   const now = Date.now();
   const premoveList = state.premove.filter(Boolean);
 
@@ -146,13 +164,28 @@ export function renderBoard() {
     square.className = `square ${isLightSquare(idx) ? "light" : "dark"}`;
     square.dataset.square = idx;
 
+    const patternEntry = patternMap.get(idx);
+    const occupant = state.game.board[idx];
+    const captureStyle =
+      (patternEntry && patternEntry.type === "capture") ||
+      (patternEntry &&
+        patternEntry.type === "either" &&
+        occupant &&
+        selectedPiece &&
+        pieceColor(occupant) !== pieceColor(selectedPiece)) ||
+      captureSquares.has(idx);
+
     if (state.selected === idx) square.classList.add("highlight");
     if (state.lastMove && (state.lastMove.from === idx || state.lastMove.to === idx)) {
       square.classList.add("last-move");
     }
-    if (state.selected !== null && targetSquares.has(idx)) {
-      square.classList.add("target");
-      if (captureSquares.has(idx)) square.classList.add("capture");
+    if (state.selected !== null && patternEntry) {
+      if (targetSquares.has(idx)) {
+        square.classList.add("target");
+      } else {
+        square.classList.add("target-blocked");
+      }
+      if (captureStyle) square.classList.add("capture");
     }
     if (state.hoverTarget === idx) square.classList.add("hover-target");
     if (state.inCheck.w && state.game.board[idx] === "K") square.classList.add("check");

@@ -158,6 +158,28 @@ function generateMovesFromSquare(game, idx, piece) {
   }
 }
 
+export function generatePatternMoves(game, idx) {
+  const piece = game.board[idx];
+  if (!piece) return [];
+  const type = piece.toLowerCase();
+  switch (type) {
+    case "p":
+      return generatePawnPattern(idx, piece);
+    case "n":
+      return generateKnightPattern(idx, piece);
+    case "b":
+      return generateSlidingPattern(idx, [7, 9, -7, -9]);
+    case "r":
+      return generateSlidingPattern(idx, [1, -1, 8, -8]);
+    case "q":
+      return generateSlidingPattern(idx, [1, -1, 8, -8, 7, 9, -7, -9]);
+    case "k":
+      return generateKingPattern(idx);
+    default:
+      return [];
+  }
+}
+
 function generatePawnMoves(game, idx, piece) {
   const moves = [];
   const color = pieceColor(piece);
@@ -217,6 +239,34 @@ function generatePawnMoves(game, idx, piece) {
   return moves;
 }
 
+function generatePawnPattern(idx, piece) {
+  const pattern = [];
+  const color = pieceColor(piece);
+  const forward = color === "w" ? -8 : 8;
+  const startRank = color === "w" ? 6 : 1;
+  const rank = Math.floor(idx / 8);
+
+  const oneAhead = idx + forward;
+  if (oneAhead >= 0 && oneAhead < 64) pattern.push({ from: idx, to: oneAhead, type: "move" });
+
+  if (rank === startRank) {
+    const twoAhead = idx + forward * 2;
+    if (twoAhead >= 0 && twoAhead < 64) pattern.push({ from: idx, to: twoAhead, type: "move" });
+  }
+
+  const diagOffsets = color === "w" ? [-9, -7] : [7, 9];
+  for (const offset of diagOffsets) {
+    const target = idx + offset;
+    if (target < 0 || target > 63) continue;
+    const file = idx % 8;
+    const targetFile = target % 8;
+    if (Math.abs(targetFile - file) !== 1) continue;
+    pattern.push({ from: idx, to: target, type: "capture" });
+  }
+
+  return pattern;
+}
+
 function generateKnightMoves(game, idx, piece) {
   const moves = [];
   const color = pieceColor(piece);
@@ -237,6 +287,24 @@ function generateKnightMoves(game, idx, piece) {
     }
   }
   return moves;
+}
+
+function generateKnightPattern(idx, piece) {
+  const pattern = [];
+  const offsets = [15, 17, 10, 6, -15, -17, -10, -6];
+  for (const off of offsets) {
+    const target = idx + off;
+    if (target < 0 || target > 63) continue;
+    const file = idx % 8;
+    const targetFile = target % 8;
+    const rank = Math.floor(idx / 8);
+    const targetRank = Math.floor(target / 8);
+    const df = Math.abs(file - targetFile);
+    const dr = Math.abs(rank - targetRank);
+    if (!((df === 1 && dr === 2) || (df === 2 && dr === 1))) continue;
+    pattern.push({ from: idx, to: target, type: "either" });
+  }
+  return pattern;
 }
 
 function generateSlidingMoves(game, idx, piece, directions) {
@@ -261,6 +329,20 @@ function generateSlidingMoves(game, idx, piece, directions) {
     }
   }
   return moves;
+}
+
+function generateSlidingPattern(idx, directions) {
+  const pattern = [];
+  for (const dir of directions) {
+    let current = idx;
+    while (true) {
+      const next = stepSquare(current, dir);
+      if (next === null) break;
+      pattern.push({ from: idx, to: next, type: "either" });
+      current = next;
+    }
+  }
+  return pattern;
 }
 
 function generateKingMoves(game, idx, piece) {
@@ -329,6 +411,22 @@ function generateKingMoves(game, idx, piece) {
   }
 
   return moves;
+}
+
+function generateKingPattern(idx) {
+  const pattern = [];
+  const offsets = [1, -1, 8, -8, 7, 9, -7, -9];
+  for (const off of offsets) {
+    const target = idx + off;
+    if (target < 0 || target > 63) continue;
+    const file = idx % 8;
+    const targetFile = target % 8;
+    const rank = Math.floor(idx / 8);
+    const targetRank = Math.floor(target / 8);
+    if (Math.abs(file - targetFile) > 1 || Math.abs(rank - targetRank) > 1) continue;
+    pattern.push({ from: idx, to: target, type: "either" });
+  }
+  return pattern;
 }
 
 export function squareAttacked(game, target, attackerColor) {

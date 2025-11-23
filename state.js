@@ -1,6 +1,7 @@
 import {
   initialState,
   generateLegalMoves,
+  generatePatternMoves,
   makeMove,
   isInCheck,
   evaluateGameEnd,
@@ -22,6 +23,7 @@ export const state = {
   inCheck: { w: false, b: false },
   cooldowns: Array(64).fill(null),
   premove: Array(64).fill(null),
+  patternMoves: [],
 };
 
 export function resetGame() {
@@ -40,18 +42,21 @@ export function resetGame() {
     p ? { until: now + 3000, duration: 3000 } : null
   );
   state.premove = Array(64).fill(null);
+  state.patternMoves = [];
 }
 
 export function selectSquare(idx) {
   state.selected = idx;
   const color = pieceColor(state.game.board[idx]);
   state.legalMoves = generateLegalMoves(state.game, color).filter((m) => m.from === idx);
+  state.patternMoves = generatePatternMoves(state.game, idx);
   state.hoverTarget = null;
 }
 
 export function clearSelection() {
   state.selected = null;
   state.legalMoves = [];
+  state.patternMoves = [];
   state.hoverTarget = null;
 }
 
@@ -73,6 +78,7 @@ export function applyMove(move) {
   state.moveHistory.push(moveToString(move));
   state.selected = null;
   state.legalMoves = [];
+  state.patternMoves = [];
   state.hoverTarget = null;
   const now = Date.now();
   // set cooldown for destination piece
@@ -105,7 +111,13 @@ export function isOnCooldown(idx) {
 }
 
 export function setPremove(move) {
-  state.premove[move.from] = { from: move.from, to: move.to };
+  state.premove[move.from] = {
+    from: move.from,
+    to: move.to,
+    piece: move.piece,
+    promotion: move.promotion || null,
+    createdAt: Date.now(),
+  };
 }
 
 export function clearPremove(idx) {
@@ -117,25 +129,24 @@ export function processPremoves() {
   const now = Date.now();
   let moved = false;
   let outcome = null;
-  for (let idx = 0; idx < 64; idx++) {
-    const pm = state.premove[idx];
-    if (!pm) continue;
-    const piece = state.game.board[idx];
-    if (!piece) {
-      state.premove[idx] = null;
+  const queue = state.premove.filter(Boolean).sort((a, b) => a.createdAt - b.createdAt);
+  for (const pm of queue) {
+    const piece = state.game.board[pm.from];
+    if (!piece || pieceColor(piece) !== pieceColor(pm.piece)) {
+      state.premove[pm.from] = null;
       continue;
     }
-    const cd = state.cooldowns[idx];
+    const cd = state.cooldowns[pm.from];
     if (cd && cd.until > now) continue;
     const color = pieceColor(piece);
     const moves = generateLegalMoves(state.game, color);
-    const move = moves.find((m) => m.from === idx && m.to === pm.to);
+    let move =
+      moves.find((m) => m.from === pm.from && m.to === pm.to && (!pm.promotion || m.promotion === pm.promotion)) ||
+      moves.find((m) => m.from === pm.from && m.to === pm.to);
     if (move) {
       outcome = applyMove(move);
       moved = true;
       if (outcome) break;
-    } else {
-      state.premove[idx] = null;
     }
   }
   return { moved, outcome };
