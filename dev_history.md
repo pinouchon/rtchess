@@ -1469,3 +1469,23 @@ Integrated git commit history into `export_sessions.py`: it now scrapes commits 
 
 --------------------------------------------------------------------------------
 
+Commit #9:
+Hash: a36f45ad1a7424124cd77ff0dc5b8362bede1924
+Timestamp: 2025-11-23T21:17:00+01:00
+Message:
+include commits in export sessions
+
+--------------------------------------------------------------------------------
+
+Prompt #76:
+Id: 019ab23f-1d2c-7a10-955a-574a704ba1c5
+Timestamp: 2025-11-23T21:17:46.671000+01:00
+Prompt:
+Let's rename the script export_sessions.py to export_dev_history.py, and history.md to dev_history.md. Change function names as well
+Response:
+Renamed the script to `export_dev_history.py`, updated functions, and now it writes to `dev_history.md` while interleaving prompt/response blocks with git commits in timestamp order (including session IDs and commit hashes/messages). See `export_dev_history.py` for the refreshed naming and output path change.
+
+Run `python3 export_dev_history.py` from the repo root to regenerate `dev_history.md`.
+
+--------------------------------------------------------------------------------
+

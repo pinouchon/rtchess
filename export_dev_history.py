@@ -37,7 +37,7 @@ def session_matches(session_cwd: str) -> bool:
         return str(PROJECT_ROOT) in session_cwd or PROJECT_ROOT.name in session_cwd
 
 
-def gather_sessions() -> Dict[str, dict]:
+def collect_session_events() -> Dict[str, dict]:
     sessions_dir = Path.home() / ".codex" / "sessions"
     if not sessions_dir.exists():
         return {}
@@ -103,7 +103,7 @@ def gather_sessions() -> Dict[str, dict]:
     return {sid: data for sid, data in sessions.items() if data.get("relevant") and data.get("events")}
 
 
-def gather_commits() -> List[dict]:
+def collect_commits() -> List[dict]:
     cmd = [
         "git",
         "-C",
@@ -135,7 +135,7 @@ def gather_commits() -> List[dict]:
     return commits
 
 
-def build_prompts(events: List[dict]) -> List[dict]:
+def build_prompt_entries(events: List[dict]) -> List[dict]:
     prompts: List[dict] = []
     last_prompt_by_sid: Dict[str, dict] = {}
     for event in sorted(events, key=lambda e: e.get("ts") or 0.0):
@@ -153,7 +153,7 @@ def build_prompts(events: List[dict]) -> List[dict]:
     return prompts
 
 
-def build_entries(prompts: List[dict], commits: List[dict]) -> List[dict]:
+def build_timeline_entries(prompts: List[dict], commits: List[dict]) -> List[dict]:
     entries: List[dict] = []
     for p in prompts:
         entries.append({"type": "prompt", **p})
@@ -162,7 +162,7 @@ def build_entries(prompts: List[dict], commits: List[dict]) -> List[dict]:
     return sorted(entries, key=lambda e: e.get("ts") or 0.0)
 
 
-def write_history(entries: List[dict], out_path: Path) -> None:
+def write_dev_history(entries: List[dict], out_path: Path) -> None:
     with out_path.open("w", encoding="utf-8") as f:
         f.write(f"{SEPARATOR}\n\n")
         prompt_counter = 0
@@ -189,20 +189,23 @@ def write_history(entries: List[dict], out_path: Path) -> None:
 
 
 def main() -> None:
-    sessions = gather_sessions()
+    sessions = collect_session_events()
     all_events: List[dict] = []
     if sessions:
         ordered = sorted(sessions.items(), key=lambda item: item[1].get("meta_ts") or 0.0)
         for _sid, data in ordered:
             all_events.extend(data.get("events") or [])
-    prompts = build_prompts(all_events)
-    commits = gather_commits()
+    prompts = build_prompt_entries(all_events)
+    commits = collect_commits()
     if not prompts and not commits:
         print("No prompts or commits found.")
         return
-    entries = build_entries(prompts, commits)
-    write_history(entries, PROJECT_ROOT / "history.md")
-    print(f"Wrote {len(entries)} entries (prompts: {len(prompts)}, commits: {len(commits)}) to history.md")
+    entries = build_timeline_entries(prompts, commits)
+    output_path = PROJECT_ROOT / "dev_history.md"
+    write_dev_history(entries, output_path)
+    print(
+        f"Wrote {len(entries)} entries (prompts: {len(prompts)}, commits: {len(commits)}) to {output_path.name}"
+    )
 
 
 if __name__ == "__main__":
