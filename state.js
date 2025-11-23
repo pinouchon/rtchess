@@ -50,6 +50,7 @@ export function selectSquare(idx) {
   const color = pieceColor(state.game.board[idx]);
   state.legalMoves = generateLegalMoves(state.game, color).filter((m) => m.from === idx);
   state.patternMoves = generatePatternMoves(state.game, idx);
+  if (state.premove[idx]) state.premove[idx] = null;
   state.hoverTarget = null;
 }
 

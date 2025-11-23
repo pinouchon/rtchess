@@ -81,6 +81,9 @@ function handleSquareClick(idx) {
   }
 
   if (state.selected === idx) {
+    if (state.premove[idx]) {
+      clearPremove(idx);
+    }
     clearSelection();
     renderAll(getStatusText(), getSubStatus());
     return;
