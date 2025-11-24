@@ -1867,3 +1867,803 @@ premove mostly working
 
 --------------------------------------------------------------------------------
 
+Commit #12:
+Hash: 1c8061e455623b9470362286f9176967ac1ff234
+Timestamp: 2025-11-23T23:31:19+01:00
+Message:
+dev history
+
+--------------------------------------------------------------------------------
+
+Prompt #95:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:33:18.826000+01:00
+Prompt:
+I want to make it so when a piece is in a pre-move state (wether on or off cooldown), selecting that piece again will cancel the premove. It should cancel both the state and the visualization (green arrow)
+Response:
+Clicking a piece that already has a premove now cancels the premove (state and green arrow) and returns immediately, for both on- and off-cooldown pieces. Change is in `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #96:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:34:39.517000+01:00
+Prompt:
+Add a console log when the pre-move is being cancelled so I can debug
+Response:
+Added a console log when cancelling a premove by clicking the piece (`[premove] cancel on click <idx>`). This should help debugging.
+
+--------------------------------------------------------------------------------
+
+Prompt #97:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:35:31.543000+01:00
+Prompt:
+Add logging for when a piece is being pre-moved as well (at the time of making the pre-move)
+Response:
+Added logging when setting a premove: `[premove] set { from, to, onCooldown }` right before storing the premove. This pairs with the existing cancel log for easier debugging.
+
+--------------------------------------------------------------------------------
+
+Prompt #98:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:36:36.543000+01:00
+Prompt:
+ok. I see the log for the "[premove] set", but I don't see the console log for the "[premove] cancel on click". Make sure it's being triggered at the right place
+Response:
+Added premove cancel handling when re-clicking a selected piece: if the piece has a premove, it now logs `[premove] cancel on click (selected)` and clears the premove before clearing selection. This should surface the cancel log in all selection paths.
+
+--------------------------------------------------------------------------------
+
+Prompt #99:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:37:46.995000+01:00
+Prompt:
+Also add a console log when selecting any piece. And any other useful console log debugging to understand
+Response:
+Added broader debugging logs:
+
+- `state.js`: logs every selection with index and piece.
+- `index.js`: logs click details, and move intent evaluation (`from`, `to`, whether legal, and cooldown state).
+
+Combined with the existing premove set/cancel logs, this should make interaction flow visible in the console.
+
+--------------------------------------------------------------------------------
+
+Prompt #100:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:39:37.775000+01:00
+Prompt:
+Here is a bunch of log after moving & pre-moving pieces. The cancel seems to not trigger:
+
+
+[select] square 52 piece P
+index.js:43 [intent] from 52 to 43 {legal: false, onCooldown: true}
+index.js:59 [premove] set {from: 52, to: 43, onCooldown: true}
+state.js:53 [select] square 52 piece P
+index.js:43 [intent] from 52 to 36 {legal: true, onCooldown: true}
+index.js:59 [premove] set {from: 52, to: 36, onCooldown: true}
+state.js:53 [select] square 50 piece P
+index.js:43 [intent] from 50 to 43 {legal: false, onCooldown: false}
+index.js:59 [premove] set {from: 50, to: 43, onCooldown: false}
+2state.js:53 [select] square 50 piece P
+Response:
+Added more diagnostics around premove cancellation checks:
+
+- When no piece is selected, clicks now log whether a premove exists at that square before attempting to cancel.
+- When clicking the already-selected square, it logs the premove presence before clearing.
+- Existing premove cancel logs remain.
+
+This should clarify why cancel logs aren’t appearing. (Changes in `index.js`.)
+
+--------------------------------------------------------------------------------
+
+Prompt #101:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:41:02.005000+01:00
+Prompt:
+Here is what happens if i premove & re-select the same pawn:
+
+
+[select] square 52 piece P
+index.js:43 [intent] from 52 to 45 {legal: false, onCooldown: true}
+index.js:59 [premove] set {from: 52, to: 45, onCooldown: true}
+2state.js:53 [select] square 52 piece P
+index.js:43 [intent] from 52 to 45 {legal: false, onCooldown: true}
+index.js:59 [premove] set {from: 52, to: 45, onCooldown: true}
+state.js:53 [select] square 52 piece P
+Response:
+Added a hard cancel when selecting a piece that already has a premove: `selectSquare` now logs `[premove] cancel on select` and clears that premove before selecting, ensuring the arrow disappears and state is reset even if earlier cancel hooks aren’t hit.
+
+--------------------------------------------------------------------------------
+
+Prompt #102:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:43:33.397000+01:00
+Prompt:
+Maybe try to have the pre-move cancellation at the same time as logging "[select] square 52 piece P". It looks like the premove cancellation is too aggressive, sometimes some moves trigger cancellations. A cancellation should only trigger for the clicked piece
+Response:
+Adjusted premove cancellation to happen inline with selection logging and only for the clicked piece. `selectSquare` now logs the selection plus premove presence, then cancels that premove if it exists—avoiding over-aggressive clearing. Changes in `state.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #103:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:47:45.102000+01:00
+Prompt:
+It's good now, let's remove the console logs
+Response:
+Removed the temporary console logging while keeping the behavior intact (selection now cancels that piece’s premove cleanly). Files updated: `state.js`, `index.js`.
+
+--------------------------------------------------------------------------------
+
+Commit #13:
+Hash: 8670e27c5640c05ab84aa860c6ce89b0dea49c18
+Timestamp: 2025-11-23T23:49:11+01:00
+Message:
+premove cancel
+
+--------------------------------------------------------------------------------
+
+Prompt #104:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:55:46.076000+01:00
+Prompt:
+Now, let's call the current mode "gametesting" where there is a single player controlling white and black pieces. I want to add a second mode called "pvp" where one player controls the white pieces, and another controls the black pieces. There should be a mode selector on the left menu. If selecting "pvp", the pvp mode triggers, and below the selector is a generated link to give to the other player to play. The the second player visits the link (it should contain a game id), both players play each other, and the state is synchronized via the server. The state synchronized via the server are only the moves (let's analyse if it's better to also sync the pre-moves in the planning phase).
+The black player sees the board with the black pieces at the bottom. The player who generated the link is the "host", for now let's have the host be the white player. The host gets a notification in the menu when black joined, and has a button that starts the game.
+
+Let's make a plan to implement the pvp mode. Let's only do the new mode and player invitation for now
+Response:
+Here’s a focused plan with open questions before we start coding:
+
+Plan
+- Mode selector + UI
+  - Add a mode dropdown (gametesting/pvp) in the left menu.
+  - Show/hide “invite link” + “start game”/status panel when pvp is chosen.
+- Session IDs & roles
+  - On entering pvp: generate a game id if none in URL; show a link containing `?game=<id>&role=guest` for black.
+  - Determine role: host = white when landing without `role=guest`; guest = black when `role=guest`.
+- Sync data model
+  - Minimal sync: exchange move list with timestamps; on receipt, apply moves locally to reconstruct board.
+  - Decide whether to sync premoves now or later (see questions).
+- Connectivity layer
+  - Introduce a tiny sync client abstraction with stubbed send/receive (for now, local mock or simple polling endpoint if available).
+  - Register callbacks to push local moves and handle remote moves.
+- Board orientation & controls
+  - Orient board so host is white, guest is black.
+  - Lock move input to the active side (host moves white; guest moves black), still respecting cooldown/premove rules.
+- Status/notifications
+  - Show “waiting for opponent” until guest connects; update when joined.
+  - Host-only “Start game” button once opponent is present.
+- Persistence/reset
+  - On mode switch or new game, reset local state and clear subscriptions.
+
+Open questions
+1) Is there any server/backend available for syncing, or should we stub a local mock now (e.g., in-memory for same browser) and leave hooks for a real transport?
+2) Should premoves be synchronized now or skip and only sync executed moves for the first iteration?
+3) Are we okay using URL query params for the invite link (`?game=<id>&role=guest>`), or do you prefer a hash/fragment-based link?
+
+--------------------------------------------------------------------------------
+
+Prompt #105:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-23T23:58:05.078000+01:00
+Prompt:
+1. Yes, let's use the current python server for state syncing
+2. For first iteration, let's only sync the actual moves. Pre-moves are client-only
+3. Let's do URL query params for the invite link
+Let's implement now the invitation, refactoring the current mode, adding the new mode, and start game. 
+Let's keep actual play and state syncing for later
+Response:
+Added a PvP invitation mode alongside the existing gametesting mode:
+
+- New mode selector in the Options panel plus invite link, status, and start button UI (with styling helpers for stacked layout, invite row, hidden class, etc.).
+- Session state now tracks mode/role/gameId/join/start flags; gametesting remains default.
+- Auto-parse `?game=<id>&role=guest` from URL to join as Black; hosts generate a game ID and share an invite link with `role=guest`. Board orientation follows the role.
+- Basic cross-tab join/start signaling via `BroadcastChannel` (for local testing): guest announces join; host sees “Black joined” and can start, which notifies the guest. Move syncing stays for later per request.
+- Header mode pill and status/side labels reflect the current mode/role; new game resets with the appropriate orientation.
+
+Files touched: `index.html`, `index.js`, `state.js`, `ui.js`, `styles.css`.
+
+Run `node tests/premove.test.mjs` to confirm existing premove test still passes (warning about module type is expected without a package.json).
+
+--------------------------------------------------------------------------------
+
+Prompt #106:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:01:13.266000+01:00
+Prompt:
+Let's make the joining work on the same local network, using the python server
+Response:
+Implemented PvP invite flow with a simple network-backed lobby:
+
+- Added mode selector with PvP invite panel (link, copy button, status, start button) and styling helpers.
+- Session state now tracks mode/role/gameId/opponent join/start; board orientation follows role.
+- Frontend joins/creates games, builds invite links with `?game=<id>&role=guest`, polls server status, and lets the host start once Black joins. Guests auto-join via the link; no move sync yet.
+- Replaced local BroadcastChannel with REST calls: `api/pvp/join`, `api/pvp/status`, `api/pvp/start`.
+- Added `server.py` (run with `python3 server.py`) serving those endpoints for LAN play.
+
+Files touched: `index.html`, `index.js`, `state.js`, `ui.js`, `styles.css`, plus new `server.py`.
+
+How to try:
+1) Host: `python3 server.py` (serves on 0.0.0.0:8000), open `http://<host-ip>:8000/`, pick PvP (auto-creates game), share the invite link shown.
+2) Guest: open the link; joins as Black and sees reversed board.
+3) Host sees “Black joined” and can press Start. Move sync comes next iteration.
+
+--------------------------------------------------------------------------------
+
+Prompt #107:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:05:44.297000+01:00
+Prompt:
+Make it so the cooldowns only start when the host starts the game (initially they are all shown as a full green circle that is static). And when the host presses start game, then the cooldowns start refreshing
+Response:
+Implemented “start-controlled” cooldowns for PvP with server-backed lobby updates:
+
+- Cooldowns now stay static (full circle) until the host starts the game; before start, pieces can’t be selected in PvP.
+- On game start, initial 3s cooldowns are activated for all pieces; guests auto-activate when the server reports the game as started.
+- Added pending cooldown handling in rendering; non-started games show full circles without ticking down.
+- PvP status polling now hooks into a lightweight Python server (`server.py`), using `/api/pvp/join`, `/api/pvp/status`, and `/api/pvp/start` endpoints; removed BroadcastChannel.
+- New helper `startInitialCooldowns` and pending cooldown setup on reset; selection is disabled in PvP until started.
+
+Files changed: `index.js`, `state.js`, `ui.js`; added `server.py`; styles/UI unchanged beyond previous PvP invite work.
+
+Run `python3 server.py` to host the lobby endpoints, open the app, choose PvP, share the invite link; when the host clicks Start, cooldowns begin.
+
+--------------------------------------------------------------------------------
+
+Prompt #108:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:07:52.826000+01:00
+Prompt:
+The text "Waiting for opponent to join" should change to "opponent joined" when the opponent has connected (he visited the link and loaded the game).
+The button "start game" should also be disabled before the opponent as joined, and becomes enabled when the opponent has joined.
+In the pvp mode, the "your color", difficulty and reset position buttons should not be there (they are only for gametesting)
+Response:
+Made PvP lobby UI responsive to opponent presence and hid solo-only controls in PvP:
+
+- Status now flips to “Opponent joined…” once the guest connects; the host’s “Start game” button remains disabled until then and enables when joined.
+- Solo-only fields (color, difficulty, reset position) are wrapped in `#soloOptions` and hidden when PvP is selected.
+- Invite panel wording updated; hidden class ensured in CSS.
+
+Files: `index.js`, `index.html`, `styles.css`.
+
+Behavior: In PvP mode, you’ll see “Waiting for opponent to join” until the guest connects, then “Opponent joined…” and the host can start the game. In PvP, solo options no longer appear.
+
+--------------------------------------------------------------------------------
+
+Prompt #109:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:09:38.052000+01:00
+Prompt:
+Make the "start game" button disabled when "waiting for opponent to join"
+Response:
+“Start game” is now disabled while waiting for the opponent; it only enables for the host once the opponent has joined and the game isn’t started. Updated `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #110:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:10:54.359000+01:00
+Prompt:
+Make a css rule that shos the "start game" button disabled: it should be grey when disabled
+Response:
+Added a disabled button style: disabled buttons now appear gray with reduced opacity, no shadow, and a not-allowed cursor. (Updated `styles.css`.)
+
+--------------------------------------------------------------------------------
+
+Prompt #111:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:12:06.332000+01:00
+Prompt:
+Now make it so when the guest connects, the hosts sees it, and "Waiting for opponent to join" text should instead say "opponend has joined", and the start game button is no longer disabled
+Response:
+Updated the PvP status text: once the guest connects, the host now sees “Opponent has joined. Host can start.” (and the start button is enabled); guests see “Opponent has joined. Waiting for host.” when connected. Changes in `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #112:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:13:25.952000+01:00
+Prompt:
+It looks like when the opponent joins, nothing happens on the host. Add debug statements on the server side, so we can understand what is going on
+Response:
+Added server-side debug logging for the PvP lobby endpoints so you can see when hosts/guests join, when status is polled, and when games are started:
+
+- `/api/pvp/join` logs `[join] game=<id> role=<role> state=<...>`.
+- `/api/pvp/status` logs `[status] game=<id> state=<...>`.
+- `/api/pvp/start` logs `[start] game=<id> state=<...>`.
+
+File updated: `server.py`. Run `python3 server.py` and watch the console while clients connect.
+
+--------------------------------------------------------------------------------
+
+Prompt #113:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:14:16.926000+01:00
+Prompt:
+Also change the text on the guests side. The text should say: "Waiting for host to start the game". And there should be no green button
+Response:
+Updated guest-side messaging and disabled-state handling:
+
+- PvP status now says “Waiting for host to start the game.” for guests (both before and after joining); no green start button for guests since it’s disabled.
+- Disabled button styling kept in place.
+
+Files touched: `index.js`, `styles.css`.
+
+--------------------------------------------------------------------------------
+
+Prompt #114:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:15:36.180000+01:00
+Prompt:
+The guests still sees the "waiting for host" button, this button shouldn't be there (only the host has a button "Start game")
+Response:
+Hid the start button for guests entirely: only the host now sees the “Start game” button (enabled once the opponent joins). Guests just see the status text. Updated `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #115:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:16:55.604000+01:00
+Prompt:
+Here is the server log as I select PvP, and then connect another browser with the guest link
+
+
+Serving HTTP on :: port 8000 (http://[::]:8000/) ...
+::1 - - [24/Nov/2025 00:15:59] code 404, message File not found
+::1 - - [24/Nov/2025 00:15:59] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:15:59] code 404, message File not found
+::1 - - [24/Nov/2025 00:15:59] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:01] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:01] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:01] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:01] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:02] "GET / HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:02] "GET /styles.css HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:02] "GET /index.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:16:02] "GET /state.js HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:02] "GET /ui.js HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:03] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:03] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:04] code 501, message Unsupported method ('POST')
+::1 - - [24/Nov/2025 00:16:04] "POST /api/pvp/join HTTP/1.1" 501 -
+::1 - - [24/Nov/2025 00:16:05] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:05] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:06] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:06] "GET /api/pvp/status?game=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:07] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:07] "GET /api/pvp/status?game=wz6xfnjt HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:08] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:08] "GET /api/pvp/status?game=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:08] "GET /?game=yoilfulc&role=guest HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:16:08] "GET /styles.css HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:08] "GET /index.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:16:08] "GET /ui.js HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:08] "GET /state.js HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:16:08] code 501, message Unsupported method ('POST')
+::1 - - [24/Nov/2025 00:16:08] "POST /api/pvp/join HTTP/1.1" 501 -
+::1 - - [24/Nov/2025 00:16:10] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:10] "GET /api/pvp/status?game=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:10] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:10] "GET /api/pvp/status?game=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:12] code 404, message File not found
+::1 - - [24/Nov/2025 00:16:12] "GET /api/pvp/status?game=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:16:12] code 404, message File not found
+
+The host doesn't see the guest connecting
+Response:
+The API calls were hitting a plain `http.server`, giving 404/501. I updated `server.py` to serve both the static files and the PvP API:
+
+- `Handler` now subclasses `SimpleHTTPRequestHandler`, so non-API requests serve your files; API endpoints are handled for `/api/pvp/status`, `/join`, and `/start`.
+- CORS still applied; debug prints remain (`[status]`, `[join]`, `[start]`).
+- POST now works; GET `/api/pvp/status` no longer 404s.
+
+Run the app via `python3 server.py` (not `python3 -m http.server`) so the API works and the host sees the guest join.
+
+--------------------------------------------------------------------------------
+
+Prompt #116:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:19:04.860000+01:00
+Prompt:
+(base) ➜  rtchess git:(main) ✗ python3 -m http.server 8000
+Serving HTTP on :: port 8000 (http://[::]:8000/) ...
+::1 - - [24/Nov/2025 00:18:15] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:15] "GET /api/pvp/statusgame=yoilfulc HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:18:16] "GET / HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:18:16] "GET /index.js HTTP/1.1" 304 -
+::1 - - [24/Nov/2025 00:18:19] code 501, message Unsupported method ('POST')
+::1 - - [24/Nov/2025 00:18:19] "POST /api/pvp/join HTTP/1.1" 501 -
+::1 - - [24/Nov/2025 00:18:21] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:21] "GET /api/pvp/statusgame=wg0x7of5 HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:18:23] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:23] "GET /api/pvp/status?game=wg0x7of5 HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:18:24] "GET /?game=wg0x7of5&role=guest HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /styles.css HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /index.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /state.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /rules.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /ui.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /pieces.js HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] code 501, message Unsupported method ('POST')
+::1 - - [24/Nov/2025 00:18:24] "POST /api/pvp/join HTTP/1.1" 501 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wR.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wN.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wK.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wQ.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bP.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wB.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/wP.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bR.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bB.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bQ.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bN.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:24] "GET /assets/pieces/bK.svg HTTP/1.1" 200 -
+::1 - - [24/Nov/2025 00:18:25] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:25] "GET /api/pvp/status?game=wg0x7of5 HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:18:26] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:26] "GET /api/pvp/status?game=wg0x7of5 HTTP/1.1" 404 -
+::1 - - [24/Nov/2025 00:18:27] code 404, message File not found
+::1 - - [24/Nov/2025 00:18:27] "GET /api/pvp/status?game=wg0x7of5 HTTP/1.1" 404 -
+
+
+This is the new server log.
+
+Also try to remove the 404 errors. But more importantly, the host doesn't see the guest joining
+Response:
+Implemented backend-aware PvP UI and restored the API server:
+
+- Added server availability handling in the frontend: if the PvP API isn’t reachable, the status now shows “PvP server unavailable. Run python3 server.py”, and start/host actions stay disabled until the server responds. On successes, availability is reset and UI updates accordingly.
+- Updated status texts to reflect opponent join and host/guest roles; the guest no longer sees a start button.
+- Restored `server.py` as a combined static+API server (`/api/pvp/status|join|start`) with debug logs.
+
+Important: Run `python3 server.py` (not `python3 -m http.server`) so the PvP endpoints work and host can see guest joins.
+
+--------------------------------------------------------------------------------
+
+Prompt #117:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:23:35.742000+01:00
+Prompt:
+Make a gitignore file with the usual python & note stuff like __pycache
+Response:
+Added a `.gitignore` covering Python cache/build artifacts, virtualenvs, editor clutter, logs, and common temp files.
+
+--------------------------------------------------------------------------------
+
+Commit #14:
+Hash: 1fd9f991d09ccb31ffc544b7138b237b7f6086d0
+Timestamp: 2025-11-24T00:23:54+01:00
+Message:
+python server
+
+--------------------------------------------------------------------------------
+
+Prompt #118:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:24:49.234000+01:00
+Prompt:
+Let's rewrite the python server in node fully and use websockets instead (no more python server). The invitation & connection is working. But websockets will be better for connecting with the server while playing
+Response:
+Replaced the Python server with a Node/WebSocket server and rewired the PvP flow to use real-time messages:
+
+- Added `server.js`: serves static files and a lightweight WebSocket endpoint (`/ws`) handling join/start events per game. Maintains game state (host/guest presence, started) and broadcasts state, join, and started messages.
+- Frontend now connects via WebSocket instead of REST polling. It updates opponent-joined/start state from server messages; the host’s Start button triggers a `start` message. UI shows a fallback notice if the WS server isn’t reachable.
+- Removed the old Python server; `.gitignore` unchanged.
+- PvP status still hides the Start button for guests and updates text when the opponent joins. Solo options remain hidden in PvP.
+- Existing premove test still passes.
+
+Run with: `node server.js` then open `http://localhost:8000/`. Share the invite link; guest joins, host sees “Opponent has joined” and can start (cooldowns begin on start).
+
+--------------------------------------------------------------------------------
+
+Prompt #119:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:31:17.609000+01:00
+Prompt:
+After starting the node server, If I visit http://localhost:8000/, the app loads. But if I visit http://localhost:8000/?game=osc8fy2o directly, i get a page saying just "Not found"
+Response:
+Direct URL access now works: the Node server falls back to `index.html` for query-string URLs and missing files, so visiting `http://localhost:8000/?game=osc8fy2o` will load the app instead of a “Not found” page. (Updated `server.js` static handler.)
+
+--------------------------------------------------------------------------------
+
+Prompt #120:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:32:37.870000+01:00
+Prompt:
+I still have the same error, going to localhost:8000 works, but http://localhost:8000/?game=c1zm6h0l doesn't. Add logs on the server side so we see what's hapenning
+Response:
+Added server-side logging to trace static and websocket handling:
+
+- Static handler now logs each request path and when it falls back to `index.html`, plus errors if that fails.
+- WebSocket upgrade logs the path and query params; missing params are logged before closing.
+- This should help diagnose why query-param URLs aren’t loading.
+
+File touched: `server.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #121:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:34:11.872000+01:00
+Prompt:
+Ok. Looks like i can access the links directly now.
+Let's now carry on with synchronizing the moves during play. Each player should see the other player moves as they move the pieces.
+First, make a plan for how to implement this
+Response:
+Here’s a focused plan to add real-time move sync over the new WebSocket server:
+
+- **Identify/ignore self**: Generate a per-connection `clientId` on the frontend; include it in every WS message. On receive, ignore messages with your own `clientId`.
+- **Server broadcast for moves**: Extend `server.js` WS handling to accept `{type:"move", gameId, clientId, role, move:{from,to,promotion?}}`, and broadcast that payload to all other sockets in the same game. Keep existing start/join logic unchanged.
+- **Frontend send on local move**: When a local move executes (host or guest), and we’re in PvP + gameStarted, send the move payload over WS right after `applyMove`. Do not send premoves; only executed moves.
+- **Frontend receive remote moves**: On `move` messages from other clients, validate minimally (gameId matches, role is opposite, piece color matches board) and try to find a matching legal move from that role’s perspective; if found, call `applyMove` and update UI/cooldowns/history. If not found (out-of-sync), optionally log and skip for now.
+- **Cooldown and turn handling**: Keep existing cooldown logic; remote moves call `applyMove`, which sets cooldowns. Selection/move gating remains role-based (host=white, guest=black) and gameStarted must be true.
+- **Connection robustness**: Keep existing server-availability UI; if WS closes, mark unavailable and stop sending. (Optional later: auto-reconnect with the same game/role/clientId.)
+
+Outcome: both players see each other’s moves in real time once the host starts the game.
+
+--------------------------------------------------------------------------------
+
+Commit #15:
+Hash: b8b84b94e093c012b9e94bd565674bf2c51349c5
+Timestamp: 2025-11-24T00:34:29+01:00
+Message:
+rewrite server in node, playing joining working
+
+--------------------------------------------------------------------------------
+
+Prompt #122:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:35:27.474000+01:00
+Prompt:
+Sounds good. Let's implement
+Response:
+Implemented real-time move sync over WebSockets:
+
+- **Node server**: `server.js` now logs static requests and WS upgrades, and broadcasts `move` messages to the other player along with existing join/start handling. Visiting `/?game=...` falls back to `index.html`.
+- **Client WS sync**: Frontend sends executed moves (`from`, `to`, optional promotion, clientId, gameId) when in PvP and started. Incoming move messages are validated against current legal moves for the remote color and applied locally. Messages from the same clientId are ignored.
+- **Per-client ID**: Generated once per client to filter echoes.
+- Status messaging updated to reference `node server.js` if the WS server is unavailable.
+
+Files touched: `index.js`, `server.js` (Python server removed). Existing premove test still passes (`node tests/premove.test.mjs`).
+
+Run `node server.js`, open host and guest via invite link; moves now mirror in real time.
+
+--------------------------------------------------------------------------------
+
+Prompt #123:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:39:41.866000+01:00
+Prompt:
+I don't see the moves being synchronized. To help understand what's going on, let's add a debugging window to the left (same element as the "Status"
+"PvP setup" block), but on the left, and with title "Debug", and a text area showing all relevant client and server messages, sent and received
+Response:
+Added a “Debug” panel with a live textarea log and instrumented WebSocket activity and URL/mode transitions to help track why moves aren’t syncing:
+
+- UI: new Debug panel in the sidebar with a monospace textarea for logs.
+- CSS: styling for the debug log.
+- Frontend logging: added `logDebug` utility; logs WS connect/open/close/error/recv events, mode/URL join info. Logs show most recent entries first.
+- Client ID generation added for filtering self messages.
+- WS connection now reports unavailability as “Run node server.js”.
+
+Files updated: `index.html`, `styles.css`, `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #124:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:42:27.372000+01:00
+Prompt:
+That's good. I want to change the layout a bit. The debug section should be another "<aside class=sidebar" on the left of "<section class=board-card". And the main layout should be centered
+Response:
+Reworked the layout to center everything and place the Debug panel on the left:
+
+- Added a dedicated left sidebar (`aside.sidebar.debug-sidebar`) with the Debug log panel before the board.
+- Removed the Debug panel from the right sidebar.
+- Updated the grid to three centered columns (debug, board, controls): `minmax(260px,340px) minmax(360px,820px) minmax(260px,360px)` with centered alignment.
+- Debug textarea styling remains the same.
+
+Files touched: `index.html`, `styles.css`.
+
+--------------------------------------------------------------------------------
+
+Prompt #125:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:43:22.619000+01:00
+Prompt:
+Make the debug log as high as the .board-card
+Response:
+Made the Debug panel match the board height:
+
+- Wrapped the log textarea in a `.debug-wrapper` and set heights so the textarea fills the panel vertically.
+- Added sidebar/wrapper height rules; textarea uses `height: calc(100% - 10px)` to stretch within the wrapper.
+- HTML updated to include the wrapper div.
+
+Files: `index.html`, `styles.css`.
+
+--------------------------------------------------------------------------------
+
+Prompt #126:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:44:58.780000+01:00
+Prompt:
+That didn't seem to have worked. The debug log is still very small in height. Try another method to make it taller (try a hardcoded value like 700px high)
+Response:
+Set the debug wrapper to a fixed height (700px) so the log is tall enough. File updated: `styles.css`.
+
+--------------------------------------------------------------------------------
+
+Prompt #127:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:46:54.156000+01:00
+Prompt:
+The piece synchronization is almost working. White (host) sees the piece movement of black. But black (guest) doesn't see movements of white. Make sure the messages are received, and the board state updates properly
+Response:
+
+
+--------------------------------------------------------------------------------
+
+Prompt #128:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:48:13.709000+01:00
+Prompt:
+The piece synchronization is almost working. White (host) sees the piece movement of black. But black (guest) doesn't see movements of white. Make sure the messages are
+  received, and the board state updates properly. When white moves, black prints the following debug: "2025-11-23T23:47:16.937Z [ws] recv {"type":"move","clientId":"4650ca73-5d9a-4f20-8864-66e32d5bd696","gameId":"545ctwfb","move":{"from":49,"to":41,"promotion":null}}", but no board change
+Response:
+Fixed remote move sync for the guest:
+
+- Outgoing move messages now include the sender’s role (`host`/`guest`).
+- Incoming move handling now derives the remote color from the role (with a fallback to the opposite of the current player if role is missing).
+
+Result: when White (host) moves, Black (guest) receives a `move` message with a role and applies it to the board. Files changed: `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #129:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:51:13.839000+01:00
+Prompt:
+Now the state synchronization works for pieces that are moved normally. But it doesn't work for pieces that move as a result of a pre-move. Make sure that moves triggered by a pre-move are synchronized properly with the server
+Response:
+Premoves now sync across players:
+
+- `processPremoves` accepts a callback and invokes it on each executed premove.
+- Added `sendMoveMessage` helper; `executeMove` and premove processing both use it (when in PvP and game started).
+- Included the mover’s role in outgoing WS move messages; remote handling already uses that to apply correct color.
+- Tests still pass.
+
+Files: `state.js`, `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #130:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:54:38.253000+01:00
+Prompt:
+If I premove multiple pieces and they trigger at the same time, sometimes they are not synchronized properly. Make sure that many "moves synchronization" events close to each other can't be a problem (proper batching or queuing to make sure they are all processed)
+Response:
+Premoves now sync reliably even when multiple fire together:
+
+- Outgoing move messages include the mover’s role; premove-triggered moves also send via `sendMoveMessage`.
+- Incoming moves are queued and processed sequentially (`incomingMoves` + `applyRemoteMove`) each tick, preventing drops when messages arrive back-to-back.
+- Role-aware remote application retained; own messages filtered by `clientId`.
+
+Files changed: `index.js`.
+
+--------------------------------------------------------------------------------
+
+Prompt #131:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T00:58:15.643000+01:00
+Prompt:
+I did a scenario where white pre-moves 3 pawns: c2 d2 e2. Here is the log on host side:
+
+2025-11-23T23:56:30.314Z [ws] recv {"type":"started","gameId":"9pjbm06e"}
+2025-11-23T23:56:28.448Z [ws] recv {"type":"joined","gameId":"9pjbm06e","role":"guest"}
+2025-11-23T23:56:25.352Z [ws] recv {"type":"state","gameId":"9pjbm06e","state":{"host":true,"guest":false,"started":false}}
+2025-11-23T23:56:25.352Z [ws] open
+2025-11-23T23:56:25.340Z [ws] connect ws://localhost:8000/ws?game=9pjbm06e&role=host
+2025-11-23T23:56:25.340Z [mode] host pvp {"gameId":"9pjbm06e"}
+2025-11-23T23:56:24.454Z [ws] close
+2025-11-23T23:56:02.460Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942162460,"move":{"from":12,"to":20,"promotion":null}}
+2025-11-23T23:56:02.016Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942162015,"move":{"from":11,"to":19,"promotion":null}}
+2025-11-23T23:56:01.593Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942161593,"move":{"from":10,"to":18,"promotion":null}}
+2025-11-23T23:55:42.036Z [ws] recv {"type":"started","gameId":"p9js7liu"}
+2025-11-23T23:55:39.776Z [ws] recv {"type":"joined","gameId":"p9js7liu","role":"guest"}
+2025-11-23T23:55:37.337Z [ws] recv {"type":"state","gameId":"p9js7liu","state":{"host":true,"guest":false,"started":false}}
+2025-11-23T23:55:37.336Z [ws] open
+2025-11-23T23:55:37.324Z [ws] connect ws://localhost:8000/ws?game=p9js7liu&role=host
+2025-11-23T23:55:37.324Z [mode] host pvp {"gameId":"p9js7liu"}
+2025-11-23T23:55:36.339Z [ws] close
+2025-11-23T23:55:32.818Z [ws] recv {"type":"state","gameId":"hax15cp4","state":{"host":true,"guest":true,"started":true}}
+2025-11-23T23:55:32.815Z [ws] open
+2025-11-23T23:55:32.804Z [ws] connect ws://localhost:8000/ws?game=hax15cp4&role=host
+2025-11-23T23:55:32.804Z [url] join as host {"gameId":"hax15cp4"}
+
+
+The log on guest (black) side:
+
+2025-11-23T23:56:33.347Z [ws] recv {"type":"move","clientId":"2a68cccf-e89d-4413-8a67-6f3ba1fa4b0a","gameId":"9pjbm06e","role":"host","ts":1763942193346,"move":{"from":52,"to":36,"promotion":null}}
+2025-11-23T23:56:30.303Z [ws] recv {"type":"started","gameId":"9pjbm06e"}
+2025-11-23T23:56:28.451Z [ws] recv {"type":"state","gameId":"9pjbm06e","state":{"host":true,"guest":true,"started":false}}
+2025-11-23T23:56:28.451Z [ws] open
+2025-11-23T23:56:28.447Z [ws] connect ws://localhost:8000/ws?game=9pjbm06e&role=guest
+2025-11-23T23:56:28.447Z [url] join as guest {"gameId":"9pjbm06e"}
+
+White sees their 3 pawns in the new position. Black sees only the white e pawn moved to e4. And black is missing the movement of the c and d pawns
+Response:
+Fixes synchronized premoves and rapid move bursts:
+
+- Improved WebSocket frame parsing on the Node server to handle multiple frames in a single data chunk; each frame is parsed and processed in sequence, preventing dropped moves when several messages arrive together (common with multiple premoves).
+- Premove execution already queues and processes incoming moves sequentially on the client; the server now reliably broadcasts every move frame.
+
+Files touched: `server.js`. Running `node server.js` and retesting should show all premoved pawn moves syncing to the guest.
+
+--------------------------------------------------------------------------------
+
+Prompt #132:
+Id: 019aad50-a7e6-7422-b7a8-0b384290624f
+Timestamp: 2025-11-24T01:00:35.365000+01:00
+Prompt:
+I made the same scenario
+
+
+Host log:
+
+2025-11-23T23:59:34.962Z [ws] recv {"type":"started","gameId":"00go9pmk"}
+2025-11-23T23:59:33.315Z [ws] recv {"type":"joined","gameId":"00go9pmk","role":"guest"}
+2025-11-23T23:59:28.655Z [ws] recv {"type":"state","gameId":"00go9pmk","state":{"host":true,"guest":false,"started":false}}
+2025-11-23T23:59:28.654Z [ws] open
+2025-11-23T23:59:28.643Z [ws] connect ws://localhost:8000/ws?game=00go9pmk&role=host
+2025-11-23T23:59:28.643Z [mode] host pvp {"gameId":"00go9pmk"}
+2025-11-23T23:59:27.628Z [ws] close
+2025-11-23T23:56:30.314Z [ws] recv {"type":"started","gameId":"9pjbm06e"}
+2025-11-23T23:56:28.448Z [ws] recv {"type":"joined","gameId":"9pjbm06e","role":"guest"}
+2025-11-23T23:56:25.352Z [ws] recv {"type":"state","gameId":"9pjbm06e","state":{"host":true,"guest":false,"started":false}}
+2025-11-23T23:56:25.352Z [ws] open
+2025-11-23T23:56:25.340Z [ws] connect ws://localhost:8000/ws?game=9pjbm06e&role=host
+2025-11-23T23:56:25.340Z [mode] host pvp {"gameId":"9pjbm06e"}
+2025-11-23T23:56:24.454Z [ws] close
+2025-11-23T23:56:02.460Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942162460,"move":{"from":12,"to":20,"promotion":null}}
+2025-11-23T23:56:02.016Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942162015,"move":{"from":11,"to":19,"promotion":null}}
+2025-11-23T23:56:01.593Z [ws] recv {"type":"move","clientId":"b30e43a9-7136-40e0-bafd-aea5fd6de079","gameId":"p9js7liu","role":"guest","ts":1763942161593,"move":{"from":10,"to":18,"promotion":null}}
+2025-11-23T23:55:42.036Z [ws] recv {"type":"started","gameId":"p9js7liu"}
+2025-11-23T23:55:39.776Z [ws] recv {"type":"joined","gameId":"p9js7liu","role":"guest"}
+2025-11-23T23:55:37.337Z [ws] recv {"type":"state","gameId":"p9js7liu","state":{"host":true,"guest":false,"started":false}}
+2025-11-23T23:55:37.336Z [ws] open
+2025-11-23T23:55:37.324Z [ws] connect ws://localhost:8000/ws?game=p9js7liu&role=host
+2025-11-23T23:55:37.324Z [mode] host pvp {"gameId":"p9js7liu"}
+2025-11-23T23:55:36.339Z [ws] close
+2025-11-23T23:55:32.818Z [ws] recv {"type":"state","gameId":"hax15cp4","state":{"host":true,"guest":true,"started":true}}
+2025-11-23T23:55:32.815Z [ws] open
+2025-11-23T23:55:32.804Z [ws] connect ws://localhost:8000/ws?game=hax15cp4&role=host
+2025-11-23T23:55:32.804Z [url] join as host {"gameId":"hax15cp4"}
+
+
+Guest log:
+
+2025-11-23T23:59:37.969Z [ws] recv {"type":"move","clientId":"2a68cccf-e89d-4413-8a67-6f3ba1fa4b0a","gameId":"00go9pmk","role":"host","ts":1763942377968,"move":{"from":50,"to":34,"promotion":null}}
+2025-11-23T23:59:37.968Z [ws] recv {"type":"move","clientId":"2a68cccf-e89d-4413-8a67-6f3ba1fa4b0a","gameId":"00go9pmk","role":"host","ts":1763942377968,"move":{"from":52,"to":36,"promotion":null}}
+2025-11-23T23:59:34.960Z [ws] recv {"type":"started","gameId":"00go9pmk"}
+2025-11-23T23:59:33.318Z [ws] recv {"type":"state","gameId":"00go9pmk","state":{"host":true,"guest":true,"started":false}}
+2025-11-23T23:59:33.318Z [ws] open
+2025-11-23T23:59:33.314Z [ws] connect ws://localhost:8000/ws?game=00go9pmk&role=guest
+2025-11-23T23:59:33.314Z [url] join as guest {"gameId":"00go9pmk"}
+
+Guest is still missing one pawn move. The issue is that somehow this event is not received by the guest
+Response:
+WebSocket parsing now buffers partial frames so no messages are dropped when multiple premoves land together. On each socket, incoming chunks are accumulated; frames are parsed while complete data is available and any remainder is retained for the next chunk. Also cleans up buffers on close.
+
+File updated: `server.js`. This should let guests see all queued premove moves from the host.
+
+--------------------------------------------------------------------------------
+
+Commit #16:
+Hash: 40d2514798867fca3525785bebb02effaad2da5d
+Timestamp: 2025-11-24T01:08:06+01:00
+Message:
+sync looks to be working. Game somewhat playable
+
+--------------------------------------------------------------------------------
+
