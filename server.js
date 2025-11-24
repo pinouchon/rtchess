@@ -19,6 +19,7 @@ const MIME = {
 };
 
 const games = new Map(); // gameId -> {host: null|ws, guest: null|ws, started: bool}
+const recvBuffers = new WeakMap(); // socket -> Buffer
 
 function serveStatic(req, res) {
   const reqPath = req.url.split("?")[0];
@@ -79,32 +80,37 @@ function sendFrame(socket, obj) {
   socket.write(Buffer.concat([header, data]));
 }
 
-function parseFrame(buffer) {
-  const first = buffer[0];
-  const second = buffer[1];
+function parseFrameAt(buffer, start = 0) {
+  if (buffer.length - start < 2) return null;
+  const first = buffer[start];
+  const second = buffer[start + 1];
   const opcode = first & 0x0f;
   const isMasked = (second & 0x80) === 0x80;
   let len = second & 0x7f;
   let offset = 2;
   if (len === 126) {
-    len = buffer.readUInt16BE(offset);
+    if (buffer.length - start < offset + 2) return null;
+    len = buffer.readUInt16BE(start + offset);
     offset += 2;
   } else if (len === 127) {
-    len = Number(buffer.readBigUInt64BE(offset));
+    if (buffer.length - start < offset + 8) return null;
+    len = Number(buffer.readBigUInt64BE(start + offset));
     offset += 8;
   }
   let mask;
   if (isMasked) {
-    mask = buffer.slice(offset, offset + 4);
+    if (buffer.length - start < offset + 4) return null;
+    mask = buffer.slice(start + offset, start + offset + 4);
     offset += 4;
   }
-  const payload = buffer.slice(offset, offset + len);
+  if (buffer.length - start < offset + len) return null;
+  const payload = buffer.slice(start + offset, start + offset + len);
   if (isMasked) {
     for (let i = 0; i < payload.length; i++) {
       payload[i] ^= mask[i % 4];
     }
   }
-  return { opcode, data: payload.toString("utf8") };
+  return { opcode, data: payload.toString("utf8"), next: start + offset + len };
 }
 
 function getGame(gameId) {
@@ -126,6 +132,9 @@ function handleMessage(socket, gameId, role, msg) {
       const game = getGame(gameId);
       game.started = true;
       broadcast(gameId, { type: "started", gameId }, null);
+    }
+    if (data.type === "move") {
+      broadcast(gameId, { ...data, gameId }, socket);
     }
   } catch (e) {
     // ignore malformed
@@ -184,21 +193,31 @@ server.on("upgrade", (req, socket) => {
   });
   broadcast(gameId, { type: "joined", gameId, role }, socket);
 
-  socket.on("data", (buf) => {
-    const frame = parseFrame(buf);
-    if (frame.opcode === 0x8) {
-      socket.destroy();
-      return;
+  recvBuffers.set(socket, Buffer.alloc(0));
+
+  socket.on("data", (chunk) => {
+    let buf = Buffer.concat([recvBuffers.get(socket) || Buffer.alloc(0), chunk]);
+    let offset = 0;
+    while (offset < buf.length) {
+      const frame = parseFrameAt(buf, offset);
+      if (!frame) break;
+      offset = frame.next;
+      if (frame.opcode === 0x8) {
+        socket.destroy();
+        return;
+      }
+      if (frame.opcode === 0x1) {
+        handleMessage(socket, gameId, role, frame.data);
+      }
     }
-    if (frame.opcode === 0x1) {
-      handleMessage(socket, gameId, role, frame.data);
-    }
+    recvBuffers.set(socket, buf.slice(offset));
   });
 
   socket.on("close", () => {
     const g = getGame(gameId);
     if (g.host === socket) g.host = null;
     if (g.guest === socket) g.guest = null;
+    recvBuffers.delete(socket);
   });
 });
 

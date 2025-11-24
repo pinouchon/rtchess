@@ -17,7 +17,7 @@ import {
   setGameStarted,
   startInitialCooldowns,
 } from "./state.js";
-import { pieceColor } from "./rules.js";
+import { pieceColor, generateLegalMoves } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
 
 const elements = {};
@@ -26,6 +26,27 @@ let currentRole = "solo";
 let currentGameId = null;
 let serverAvailable = true;
 let statusPoll = null;
+const clientId = (() => {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2, 10);
+})();
+const incomingMoves = [];
+
+function logDebug(...args) {
+  const el = document.getElementById("debugLog");
+  if (!el) return;
+  const line = args
+    .map((a) => {
+      if (typeof a === "string") return a;
+      try {
+        return JSON.stringify(a);
+      } catch (e) {
+        return String(a);
+      }
+    })
+    .join(" ");
+  el.value = `${new Date().toISOString()} ${line}\n${el.value}`.slice(0, 8000);
+}
 
 function getStatusText() {
   return state.gameOver ? "Game over" : currentMode === "pvp" ? "PvP setup" : "Free play";
@@ -61,7 +82,7 @@ function handleMoveIntent(targetIdx) {
       showPromotion(legalMove);
       return "promotion";
     }
-    executeMove(legalMove);
+    executeMove(legalMove, false);
     return "move";
   }
 
@@ -120,9 +141,40 @@ function handleSquareClick(idx) {
   renderAll(getStatusText(), getSubStatus());
 }
 
-function executeMove(move) {
+function executeMove(move, isRemote = false) {
   const outcome = applyMove(move);
+  if (!isRemote && currentMode === "pvp" && state.session.gameStarted && wsConnected && ws) {
+    sendMoveMessage(move);
+  }
   renderAll(outcome ? outcome.title : getStatusText(), outcome ? outcome.detail : getSubStatus());
+}
+
+function sendMoveMessage(move) {
+  if (!wsConnected || !ws) return;
+  ws.send(
+    JSON.stringify({
+      type: "move",
+      clientId,
+      gameId: currentGameId,
+      role: currentRole,
+      ts: Date.now(),
+      move: { from: move.from, to: move.to, promotion: move.promotion || null },
+    })
+  );
+}
+
+function applyRemoteMove(data) {
+  const { from, to, promotion, role } = data;
+  const remoteRole = role || (currentRole === "host" ? "guest" : "host");
+  const remoteColor = remoteRole === "host" ? "w" : "b";
+  const piece = state.game.board[from];
+  if (!piece || pieceColor(piece) !== remoteColor) return;
+  const moves = generateLegalMoves(state.game, remoteColor).filter((m) => m.from === from && m.to === to);
+  let chosen = moves[0];
+  if (promotion) {
+    chosen = moves.find((m) => m.promotion === promotion) || chosen;
+  }
+  if (chosen) executeMove(chosen, true);
 }
 
 function handleDrop(targetIdx) {
@@ -177,30 +229,38 @@ function disconnectWs() {
 function connectWs(gameId, role) {
   disconnectWs();
   try {
-    ws = new WebSocket(`${WS_BASE}?game=${encodeURIComponent(gameId)}&role=${role}`);
+    const target = `${WS_BASE}?game=${encodeURIComponent(gameId)}&role=${role}`;
+    logDebug("[ws] connect", target);
+    ws = new WebSocket(target);
   } catch (e) {
     serverAvailable = false;
+    logDebug("[ws] connect error", e.toString());
     updateInviteUI();
     return;
   }
   ws.onopen = () => {
     wsConnected = true;
     serverAvailable = true;
+    logDebug("[ws] open");
     updateInviteUI();
   };
   ws.onclose = () => {
     wsConnected = false;
     serverAvailable = false;
+    logDebug("[ws] close");
     updateInviteUI();
   };
   ws.onerror = () => {
     wsConnected = false;
     serverAvailable = false;
+    logDebug("[ws] error");
     updateInviteUI();
   };
   ws.onmessage = (ev) => {
     try {
       const data = JSON.parse(ev.data);
+      logDebug("[ws] recv", data);
+      if (data.clientId && data.clientId === clientId) return;
       if (data.type === "state" && data.state) {
         const wasStarted = state.session.gameStarted;
         setOpponentJoined(!!data.state.guest);
@@ -220,6 +280,9 @@ function connectWs(gameId, role) {
         if (!wasStarted) startInitialCooldowns();
         updateInviteUI();
         renderAll("Game started", getSubStatus());
+      }
+      if (data.type === "move" && data.move) {
+        incomingMoves.push({ ...data.move, role: data.role });
       }
     } catch (err) {
       // ignore parse errors
@@ -276,6 +339,7 @@ function updateMode(newMode) {
     setOrientation("w");
     setOpponentJoined(false);
     setGameStarted(false);
+    logDebug("[mode] host pvp", { gameId: currentGameId });
     connectWs(currentGameId, currentRole);
   } else {
     currentRole = "solo";
@@ -303,11 +367,13 @@ function initFromUrl() {
       currentRole = "guest";
       setRole("guest");
       setOrientation("b");
+      logDebug("[url] join as guest", { gameId });
       connectWs(gameId, currentRole);
     } else {
       currentRole = "host";
       setRole("host");
       setOrientation("w");
+      logDebug("[url] join as host", { gameId });
       connectWs(gameId, currentRole);
     }
   }
@@ -335,6 +401,7 @@ function init() {
   elements.pvpStatus = document.getElementById("pvpStatus");
   elements.startGameBtn = document.getElementById("startGameBtn");
   elements.soloOptions = document.getElementById("soloOptions");
+  elements.debugLog = document.getElementById("debugLog");
 
   bindControls(elements, {
     onSquareClick: handleSquareClick,
@@ -391,7 +458,15 @@ function init() {
   newGame();
 
   setInterval(() => {
-    const res = processPremoves();
+    const res = processPremoves((move) => {
+      if (currentMode === "pvp" && state.session.gameStarted) {
+        sendMoveMessage(move);
+      }
+    });
+    while (incomingMoves.length) {
+      const mv = incomingMoves.shift();
+      applyRemoteMove(mv);
+    }
     if (res.moved) {
       renderAll(res.outcome ? res.outcome.title : getStatusText(), res.outcome ? res.outcome.detail : getSubStatus());
     } else {

@@ -167,7 +167,7 @@ export function clearPremove(idx) {
   state.premove[idx] = null;
 }
 
-export function processPremoves() {
+export function processPremoves(onMove) {
   if (state.gameOver) return { moved: false, outcome: null };
   const now = Date.now();
   let moved = false;
@@ -189,6 +189,7 @@ export function processPremoves() {
     if (move) {
       outcome = applyMove(move);
       moved = true;
+      if (onMove) onMove(move);
       if (outcome) break;
     }
   }

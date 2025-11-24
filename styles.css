@@ -79,9 +79,10 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(340px, 820px) minmax(280px, 360px);
+  grid-template-columns: minmax(260px, 340px) minmax(360px, 820px) minmax(260px, 360px);
   gap: 18px;
   padding: 18px;
+  justify-content: center;
 }
 
 .board-card {
@@ -422,6 +423,28 @@ h3 {
   border-radius: 14px;
   padding: 14px;
   box-shadow: var(--shadow);
+}
+
+.debug-log {
+  width: 100%;
+  height: calc(100% - 10px);
+  background: #0f1115;
+  color: #e9edf5;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.debug-sidebar {
+  height: 100%;
+}
+
+.debug-wrapper {
+  height: 700px;
 }
 
 .panel-header {
