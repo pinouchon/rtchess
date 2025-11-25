@@ -18,6 +18,7 @@ import {
   hydrateClientFromCore,
   clearPremove,
 } from "./state.js";
+import { pieceColor } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
 
 const elements = {};
@@ -33,6 +34,7 @@ const clientId = (() => {
 const incomingMoves = [];
 let pendingIntents = [];
 let intentSeq = 1;
+const debugMode = window.location.search.includes("debug");
 
 function logDebug(...args) {
   const el = document.getElementById("debugLog");
@@ -143,6 +145,15 @@ function clearPremoveEverywhere(idx) {
   clearPremove(idx, serverState);
 }
 
+function isPieceAllowedForRole(piece) {
+  if (debugMode) return true;
+  const color = pieceColor(piece);
+  if (!color) return false;
+  if (currentRole === "host") return color === "w";
+  if (currentRole === "guest") return color === "b";
+  return true;
+}
+
 function isValidTarget(idx) {
   return state.patternMoves.some((m) => m.to === idx);
 }
@@ -155,6 +166,8 @@ function handleMoveIntent(targetIdx) {
   const fromIdx = state.selected;
   if (fromIdx === null) return "none";
   if (!isValidTarget(targetIdx)) return "none";
+  const piece = state.game.board[fromIdx];
+  if (!piece || !isPieceAllowedForRole(piece)) return "none";
 
   const legalMove = findLegalMove(targetIdx);
   if (legalMove && legalMove.promotion) {
@@ -178,7 +191,7 @@ function handleSquareClick(idx) {
       renderAll(getStatusText(), getSubStatus());
       return;
     }
-    if (piece && canSelect(idx)) {
+    if (piece && isPieceAllowedForRole(piece) && canSelect(idx)) {
       selectSquare(idx);
       renderAll(getStatusText(), getSubStatus());
       return;
@@ -203,7 +216,7 @@ function handleSquareClick(idx) {
   }
   if (action === "promotion") return;
 
-  if (piece && canSelect(idx)) {
+  if (piece && isPieceAllowedForRole(piece) && canSelect(idx)) {
     selectSquare(idx);
   } else {
     clearSelection();
@@ -506,7 +519,10 @@ function init() {
     onSideChange: () => {},
     onDifficultyChange: () => {},
     onPromotionChoice: (move) => executeMove(move),
-    canDrag: (idx) => canSelect(idx),
+    canDrag: (idx) => {
+      const piece = state.game.board[idx];
+      return piece && isPieceAllowedForRole(piece) && canSelect(idx);
+    },
   });
 
   elements.sideSelect.disabled = true;
