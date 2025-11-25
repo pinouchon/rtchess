@@ -4,11 +4,7 @@ import {
   selectSquare,
   clearSelection,
   setOrientation,
-  applyMove,
   canSelect,
-  isOnCooldown,
-  setPremove,
-  clearPremove,
   processPremoves,
   setMode,
   setRole,
@@ -16,8 +12,12 @@ import {
   setOpponentJoined,
   setGameStarted,
   startInitialCooldowns,
+  serverState,
+  applyIntent,
+  snapshotCore,
+  hydrateClientFromCore,
+  clearPremove,
 } from "./state.js";
-import { pieceColor, generateLegalMoves } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
 
 const elements = {};
@@ -31,6 +31,8 @@ const clientId = (() => {
   return Math.random().toString(36).slice(2, 10);
 })();
 const incomingMoves = [];
+let pendingIntents = [];
+let intentSeq = 1;
 
 function logDebug(...args) {
   const el = document.getElementById("debugLog");
@@ -48,6 +50,10 @@ function logDebug(...args) {
   el.value = `${new Date().toISOString()} ${line}\n${el.value}`.slice(0, 8000);
 }
 
+function logSync(event, payload) {
+  logDebug("[sync]", event, payload);
+}
+
 function getStatusText() {
   return state.gameOver ? "Game over" : currentMode === "pvp" ? "PvP setup" : "Free play";
 }
@@ -59,6 +65,82 @@ function getSubStatus() {
     return currentRole === "host" ? "You play White" : "You play Black";
   }
   return "Move any ready piece";
+}
+
+function makeIntent(from, to, promotion = null, client = clientId, createdAt = Date.now()) {
+  return {
+    id: `${client}-${intentSeq++}`,
+    clientId: client,
+    seq: intentSeq - 1,
+    from,
+    to,
+    promotion: promotion || null,
+    createdAt,
+  };
+}
+
+function reconcileFromServer() {
+  const snapshot = snapshotCore(serverState);
+  hydrateClientFromCore(snapshot);
+  const leftovers = pendingIntents.slice();
+  pendingIntents = [];
+  leftovers.forEach((intent) => {
+    const res = applyIntent(intent, state);
+    if (res.accepted) pendingIntents.push(intent);
+  });
+  logSync("reconcile", {
+    pending: pendingIntents.length,
+    lastMove: state.lastMove,
+    moveHistory: state.moveHistory.slice(-4),
+  });
+  renderAll(getStatusText(), getSubStatus());
+}
+
+function applyServerIntent(intent) {
+  const res = applyIntent(intent, serverState, intent.createdAt);
+  if (!res.accepted) {
+    logSync("server-reject", { intent, reason: res.reason });
+    pendingIntents = pendingIntents.filter((i) => i.id !== intent.id);
+    reconcileFromServer();
+    return;
+  }
+  logSync("server-accept", { intent, executed: res.executed, premoved: res.premoved });
+  processPremoves(serverState, Date.now());
+  pendingIntents = pendingIntents.filter((i) => i.id !== intent.id);
+  reconcileFromServer();
+}
+
+function dispatchIntent(intent) {
+  const prediction = applyIntent(intent, state, intent.createdAt);
+  if (prediction.accepted) pendingIntents.push(intent);
+  logSync("dispatch", {
+    intent,
+    prediction,
+    pending: pendingIntents.length,
+    wsConnected,
+    mode: currentMode,
+  });
+  if (
+    prediction.accepted &&
+    currentMode === "pvp" &&
+    wsConnected &&
+    ws &&
+    intent.clientId === clientId
+  ) {
+    sendMoveMessage(intent);
+  } else if (prediction.accepted && currentMode === "pvp" && intent.clientId === clientId) {
+    logSync("ws-send-skip", {
+      reason: !wsConnected ? "ws-disconnected" : !ws ? "ws-null" : "mode-not-pvp",
+      intent,
+    });
+  }
+  applyServerIntent(intent);
+  return prediction;
+}
+
+function clearPremoveEverywhere(idx) {
+  clearPremove(idx, state);
+  clearPremove(idx, serverState);
 }
 
 function isValidTarget(idx) {
@@ -75,27 +157,15 @@ function handleMoveIntent(targetIdx) {
   if (!isValidTarget(targetIdx)) return "none";
 
   const legalMove = findLegalMove(targetIdx);
-  const onCooldown = isOnCooldown(fromIdx);
-
-  if (!onCooldown && legalMove) {
-    if (legalMove.promotion) {
-      showPromotion(legalMove);
-      return "promotion";
-    }
-    executeMove(legalMove, false);
-    return "move";
+  if (legalMove && legalMove.promotion) {
+    showPromotion(legalMove);
+    return "promotion";
   }
 
-  const piece = state.game.board[fromIdx];
-  if (!piece) return "none";
-  setPremove({
-    from: fromIdx,
-    to: targetIdx,
-    piece,
-    promotion: legalMove ? legalMove.promotion : null,
-  });
+  const intent = makeIntent(fromIdx, targetIdx, legalMove ? legalMove.promotion : null);
+  dispatchIntent(intent);
   clearSelection();
-  return "premove";
+  return "intent";
 }
 
 function handleSquareClick(idx) {
@@ -104,7 +174,7 @@ function handleSquareClick(idx) {
 
   if (state.selected === null) {
     if (state.premove[idx]) {
-      clearPremove(idx);
+      clearPremoveEverywhere(idx);
       renderAll(getStatusText(), getSubStatus());
       return;
     }
@@ -119,7 +189,7 @@ function handleSquareClick(idx) {
 
   if (state.selected === idx) {
     if (state.premove[idx]) {
-      clearPremove(idx);
+      clearPremoveEverywhere(idx);
     }
     clearSelection();
     renderAll(getStatusText(), getSubStatus());
@@ -127,11 +197,11 @@ function handleSquareClick(idx) {
   }
 
   const action = handleMoveIntent(idx);
-  if (action === "premove") {
+  if (action === "intent") {
     renderAll(getStatusText(), getSubStatus());
     return;
   }
-  if (action === "move" || action === "promotion") return;
+  if (action === "promotion") return;
 
   if (piece && canSelect(idx)) {
     selectSquare(idx);
@@ -141,46 +211,58 @@ function handleSquareClick(idx) {
   renderAll(getStatusText(), getSubStatus());
 }
 
-function executeMove(move, isRemote = false) {
-  const outcome = applyMove(move);
-  if (!isRemote && currentMode === "pvp" && state.session.gameStarted && wsConnected && ws) {
-    sendMoveMessage(move);
+function executeMove(move, isRemote = false, createdAt = Date.now()) {
+  const intent = makeIntent(
+    move.from,
+    move.to,
+    move.promotion || null,
+    isRemote ? "remote" : clientId,
+    createdAt
+  );
+  if (isRemote) {
+    applyServerIntent(intent);
+  } else {
+    const res = dispatchIntent(intent);
+    if (res.accepted) {
+      if (currentMode === "pvp" && wsConnected && ws) {
+        sendMoveMessage(intent);
+      } else {
+        logSync("ws-send-skip", {
+          reason: !wsConnected ? "ws-disconnected" : currentMode !== "pvp" ? "mode" : "unknown",
+          intent,
+        });
+      }
+    }
+    logSync("local-move", { intent, result: res });
   }
-  renderAll(outcome ? outcome.title : getStatusText(), outcome ? outcome.detail : getSubStatus());
 }
 
-function sendMoveMessage(move) {
+function sendMoveMessage(intent) {
   if (!wsConnected || !ws) return;
+  logSync("ws-send-move", { intent, gameId: currentGameId, role: currentRole });
   ws.send(
     JSON.stringify({
       type: "move",
       clientId,
       gameId: currentGameId,
       role: currentRole,
-      ts: Date.now(),
-      move: { from: move.from, to: move.to, promotion: move.promotion || null },
+      ts: intent.createdAt || Date.now(),
+      move: { from: intent.from, to: intent.to, promotion: intent.promotion || null },
     })
   );
 }
 
 function applyRemoteMove(data) {
   const { from, to, promotion, role } = data;
-  const remoteRole = role || (currentRole === "host" ? "guest" : "host");
-  const remoteColor = remoteRole === "host" ? "w" : "b";
-  const piece = state.game.board[from];
-  if (!piece || pieceColor(piece) !== remoteColor) return;
-  const moves = generateLegalMoves(state.game, remoteColor).filter((m) => m.from === from && m.to === to);
-  let chosen = moves[0];
-  if (promotion) {
-    chosen = moves.find((m) => m.promotion === promotion) || chosen;
-  }
-  if (chosen) executeMove(chosen, true);
+  const intent = makeIntent(from, to, promotion || null, role || "remote", data.ts || Date.now());
+  logSync("ws-apply-remote", intent);
+  applyServerIntent(intent);
 }
 
 function handleDrop(targetIdx) {
   if (state.selected === null) return;
   const action = handleMoveIntent(targetIdx);
-  if (action === "premove") {
+  if (action === "intent") {
     renderAll(getStatusText(), getSubStatus());
   } else if (action === "none") {
     renderAll(getStatusText(), getSubStatus());
@@ -192,6 +274,8 @@ function newGame() {
     setGameStarted(false);
   }
   resetGame();
+  pendingIntents = [];
+  intentSeq = 1;
   state.orientation = currentRole === "guest" ? "b" : "w";
   renderAll("Ready", getSubStatus());
 }
@@ -260,7 +344,13 @@ function connectWs(gameId, role) {
     try {
       const data = JSON.parse(ev.data);
       logDebug("[ws] recv", data);
+      logSync("ws-recv-any", { data });
       if (data.clientId && data.clientId === clientId) return;
+      if (data.type === "move") {
+        logSync("ws-recv-move", { data, queueBefore: incomingMoves.length });
+        incomingMoves.push({ ...data.move, role: data.role, ts: data.ts });
+        return;
+      }
       if (data.type === "state" && data.state) {
         const wasStarted = state.session.gameStarted;
         setOpponentJoined(!!data.state.guest);
@@ -280,9 +370,6 @@ function connectWs(gameId, role) {
         if (!wasStarted) startInitialCooldowns();
         updateInviteUI();
         renderAll("Game started", getSubStatus());
-      }
-      if (data.type === "move" && data.move) {
-        incomingMoves.push({ ...data.move, role: data.role });
       }
     } catch (err) {
       // ignore parse errors
@@ -458,17 +545,17 @@ function init() {
   newGame();
 
   setInterval(() => {
-    const res = processPremoves((move) => {
-      if (currentMode === "pvp" && state.session.gameStarted) {
-        sendMoveMessage(move);
-      }
-    });
+    if (state.dragging) {
+      updateHighlights();
+      return;
+    }
+    const res = processPremoves(serverState, Date.now());
     while (incomingMoves.length) {
       const mv = incomingMoves.shift();
       applyRemoteMove(mv);
     }
     if (res.moved) {
-      renderAll(res.outcome ? res.outcome.title : getStatusText(), res.outcome ? res.outcome.detail : getSubStatus());
+      reconcileFromServer();
     } else {
       renderBoard();
       updateHighlights();

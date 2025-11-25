@@ -7,22 +7,71 @@ import {
   evaluateGameEnd,
   idxToSquare,
   pieceColor,
+  cloneState as cloneGameState,
 } from "./rules.js";
 
+function createCoreState() {
+  const game = initialState();
+  const now = Date.now();
+  return {
+    game,
+    lastMove: null,
+    moveHistory: [],
+    inCheck: { w: false, b: false },
+    gameOver: false,
+    cooldowns: game.board.map((p) => (p ? { until: now + 3000, duration: 3000 } : null)),
+    premove: Array(64).fill(null),
+  };
+}
+
+function cloneCooldown(cd) {
+  return cd ? { ...cd } : null;
+}
+
+function clonePremove(pm) {
+  return pm ? { ...pm } : null;
+}
+
+function cloneCoreState(core) {
+  return {
+    game: cloneGameState(core.game),
+    lastMove: core.lastMove ? { ...core.lastMove } : null,
+    moveHistory: [...core.moveHistory],
+    inCheck: { ...core.inCheck },
+    gameOver: core.gameOver,
+    cooldowns: core.cooldowns.map(cloneCooldown),
+    premove: core.premove.map(clonePremove),
+  };
+}
+
+function copyCoreState(source, target) {
+  target.game = cloneGameState(source.game);
+  target.lastMove = source.lastMove ? { ...source.lastMove } : null;
+  target.moveHistory = [...source.moveHistory];
+  target.inCheck = { ...source.inCheck };
+  target.gameOver = source.gameOver;
+  target.cooldowns = source.cooldowns.map(cloneCooldown);
+  target.premove = source.premove.map(clonePremove);
+}
+
+export const serverState = createCoreState();
+
+const initialCore = cloneCoreState(serverState);
+
 export const state = {
-  game: initialState(),
+  game: initialCore.game,
   selected: null,
   legalMoves: [],
-  lastMove: null,
-  moveHistory: [],
+  lastMove: initialCore.lastMove,
+  moveHistory: initialCore.moveHistory,
   orientation: "w",
-  gameOver: false,
+  gameOver: initialCore.gameOver,
   dragFrom: null,
   dragging: null,
   hoverTarget: null,
-  inCheck: { w: false, b: false },
-  cooldowns: Array(64).fill(null),
-  premove: Array(64).fill(null),
+  inCheck: initialCore.inCheck,
+  cooldowns: initialCore.cooldowns,
+  premove: initialCore.premove,
   patternMoves: [],
   session: {
     mode: "gametesting",
@@ -37,25 +86,26 @@ export function resetGame() {
   // If PvP and not started yet, leave cooldowns in a pending state (full circle, no countdown)
   const pendingCooldowns =
     state.session.mode === "pvp" && !state.session.gameStarted
-      ? state.game.board.map((p) => (p ? { pending: true, duration: 3000 } : null))
+      ? initialState().board.map((p) => (p ? { pending: true, duration: 3000 } : null))
       : null;
 
-  state.game = initialState();
+  const freshCore = createCoreState();
+  const now = Date.now();
+  if (pendingCooldowns) {
+    freshCore.cooldowns = pendingCooldowns;
+  } else {
+    freshCore.cooldowns = freshCore.game.board.map((p) =>
+      p ? { until: now + 3000, duration: 3000 } : null
+    );
+  }
+  copyCoreState(freshCore, serverState);
+  copyCoreState(serverState, state);
   state.selected = null;
   state.legalMoves = [];
-  state.lastMove = null;
-  state.moveHistory = [];
-  state.gameOver = false;
+  state.patternMoves = [];
   state.dragFrom = null;
   state.dragging = null;
   state.hoverTarget = null;
-  state.inCheck = { w: false, b: false };
-  const now = Date.now();
-  state.cooldowns =
-    pendingCooldowns ||
-    state.game.board.map((p) => (p ? { until: now + 3000, duration: 3000 } : null));
-  state.premove = Array(64).fill(null);
-  state.patternMoves = [];
   state.gameOver = false;
 }
 
@@ -101,9 +151,9 @@ export function setGameStarted(val) {
 
 export function startInitialCooldowns() {
   const now = Date.now();
-  state.cooldowns = state.game.board.map((p) =>
-    p ? { until: now + 3000, duration: 3000 } : null
-  );
+  const mapper = (board) => board.map((p) => (p ? { until: now + 3000, duration: 3000 } : null));
+  state.cooldowns = mapper(state.game.board);
+  serverState.cooldowns = mapper(serverState.game.board);
 }
 
 export function moveToString(move) {
@@ -114,26 +164,25 @@ export function moveToString(move) {
   return notation;
 }
 
-export function applyMove(move) {
-  state.game = makeMove(state.game, move);
-  state.lastMove = { from: move.from, to: move.to };
-  state.moveHistory.push(moveToString(move));
-  state.selected = null;
-  state.legalMoves = [];
-  state.patternMoves = [];
-  state.hoverTarget = null;
-  const now = Date.now();
+export function applyMove(move, store = state, now = Date.now()) {
+  store.game = makeMove(store.game, move);
+  store.lastMove = { from: move.from, to: move.to };
+  store.moveHistory.push(moveToString(move));
+  store.selected = null;
+  store.legalMoves = [];
+  store.patternMoves = [];
+  store.hoverTarget = null;
   // set cooldown for destination piece
-  state.cooldowns[move.to] = { until: now + 10000, duration: 10000 };
-  state.cooldowns[move.from] = null;
-  state.premove[move.from] = null;
-  state.premove[move.to] = null;
-  state.inCheck = {
-    w: isInCheck(state.game, "w"),
-    b: isInCheck(state.game, "b"),
+  store.cooldowns[move.to] = { until: now + 10000, duration: 10000 };
+  store.cooldowns[move.from] = null;
+  store.premove[move.from] = null;
+  store.premove[move.to] = null;
+  store.inCheck = {
+    w: isInCheck(store.game, "w"),
+    b: isInCheck(store.game, "b"),
   };
-  const outcome = evaluateGameEnd(state.game);
-  if (outcome) state.gameOver = true;
+  const outcome = evaluateGameEnd(store.game);
+  if (outcome) store.gameOver = true;
   return outcome;
 }
 
@@ -148,50 +197,99 @@ export function canSelect(idx) {
   return true;
 }
 
-export function isOnCooldown(idx) {
-  const cd = state.cooldowns[idx];
-  return !!cd && cd.until > Date.now();
+export function isOnCooldown(idx, store = state, now = Date.now()) {
+  const cd = store.cooldowns[idx];
+  if (!cd) return false;
+  if (cd.pending) return true;
+  return cd.until > now;
 }
 
-export function setPremove(move) {
-  state.premove[move.from] = {
+export function setPremove(move, store = state) {
+  store.premove[move.from] = {
     from: move.from,
     to: move.to,
     piece: move.piece,
     promotion: move.promotion || null,
-    createdAt: Date.now(),
+    createdAt: move.createdAt || Date.now(),
   };
 }
 
-export function clearPremove(idx) {
-  state.premove[idx] = null;
+export function clearPremove(idx, store = state) {
+  store.premove[idx] = null;
 }
 
-export function processPremoves(onMove) {
-  if (state.gameOver) return { moved: false, outcome: null };
-  const now = Date.now();
+export function processPremoves(store = state, now = Date.now(), onMove) {
+  if (store.gameOver) return { moved: false, outcome: null };
   let moved = false;
   let outcome = null;
-  const queue = state.premove.filter(Boolean).sort((a, b) => a.createdAt - b.createdAt);
+  const queue = store.premove.filter(Boolean).sort((a, b) => a.createdAt - b.createdAt);
   for (const pm of queue) {
-    const piece = state.game.board[pm.from];
+    const piece = store.game.board[pm.from];
     if (!piece || pieceColor(piece) !== pieceColor(pm.piece)) {
-      state.premove[pm.from] = null;
+      store.premove[pm.from] = null;
       continue;
     }
-    const cd = state.cooldowns[pm.from];
+    const cd = store.cooldowns[pm.from];
     if (cd && cd.until > now) continue;
     const color = pieceColor(piece);
-    const moves = generateLegalMoves(state.game, color);
+    const moves = generateLegalMoves(store.game, color);
     let move =
       moves.find((m) => m.from === pm.from && m.to === pm.to && (!pm.promotion || m.promotion === pm.promotion)) ||
       moves.find((m) => m.from === pm.from && m.to === pm.to);
     if (move) {
-      outcome = applyMove(move);
+      outcome = applyMove(move, store, now);
       moved = true;
-      if (onMove) onMove(move);
+      if (onMove) onMove(move, pm);
       if (outcome) break;
     }
   }
   return { moved, outcome };
+}
+
+export function applyIntent(intent, store = state, now = Date.now()) {
+  if (store.gameOver) return { accepted: false, reason: "game over" };
+  const { from, to, promotion } = intent;
+  const piece = store.game.board[from];
+  if (!piece) return { accepted: false, reason: "no piece" };
+  const patterns = generatePatternMoves(store.game, from);
+  const targetPattern = patterns.find((p) => p.to === to);
+  if (!targetPattern) return { accepted: false, reason: "invalid target" };
+
+  const color = pieceColor(piece);
+  const legalMoves = generateLegalMoves(store.game, color).filter((m) => m.from === from);
+  const legalMove =
+    legalMoves.find((m) => m.to === to && (!promotion || m.promotion === promotion)) ||
+    legalMoves.find((m) => m.to === to);
+
+  const onCd = isOnCooldown(from, store, now);
+  if (!onCd && legalMove) {
+    const outcome = applyMove(legalMove, store, now);
+    return { accepted: true, executed: true, premoved: false, outcome };
+  }
+
+  setPremove(
+    {
+      from,
+      to,
+      piece,
+      promotion: promotion || (legalMove && legalMove.promotion) || null,
+      createdAt: intent.createdAt || now,
+    },
+    store
+  );
+  return { accepted: true, executed: false, premoved: true };
+}
+
+export function snapshotCore(store = state) {
+  return cloneCoreState(store);
+}
+
+export function hydrateClientFromCore(core) {
+  copyCoreState(core, state);
+  state.selected = null;
+  state.legalMoves = [];
+  state.patternMoves = [];
+  state.hoverTarget = null;
+  state.dragFrom = null;
+  state.dragging = null;
 }

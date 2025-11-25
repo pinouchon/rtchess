@@ -131,9 +131,11 @@ function handleMessage(socket, gameId, role, msg) {
     if (data.type === "start" && role === "host") {
       const game = getGame(gameId);
       game.started = true;
+      console.log("[ws] start", { gameId });
       broadcast(gameId, { type: "started", gameId }, null);
     }
     if (data.type === "move") {
+      console.log("[ws] move recv", { gameId, role, move: data.move, ts: data.ts, clientId: data.clientId });
       broadcast(gameId, { ...data, gameId }, socket);
     }
   } catch (e) {
