@@ -10,13 +10,14 @@ import {
   setRole,
   setGameId,
   setOpponentJoined,
-  setGameStarted,
+  setGameState,
   startInitialCooldowns,
   serverState,
   applyIntent,
   snapshotCore,
   hydrateClientFromCore,
   clearPremove,
+  forceOutcome,
 } from "./state.js";
 import { pieceColor } from "./rules.js";
 import { bindControls, renderAll, showPromotion, updateHighlights, renderBoard } from "./ui.js";
@@ -35,6 +36,7 @@ const incomingMoves = [];
 let pendingIntents = [];
 let intentSeq = 1;
 const debugMode = window.location.search.includes("debug");
+let resignArmed = false;
 
 function logDebug(...args) {
   const el = document.getElementById("debugLog");
@@ -57,16 +59,153 @@ function logSync(event, payload) {
 }
 
 function getStatusText() {
-  return state.gameOver ? "Game over" : currentMode === "pvp" ? "PvP setup" : "Free play";
+  if (state.outcome?.title) return state.outcome.title;
+  if (state.gameOver) return "Game over";
+  if (currentMode === "pvp") {
+    const gs = state.session.gameState;
+    if (gs === "waiting_for_guest") return "PvP setup";
+    if (gs === "ready_to_start") return "Ready to start";
+    if (gs === "started") return "Game started";
+    if (gs === "over") return "Game over";
+  }
+  return "Free play";
 }
 
 function getSubStatus() {
+  if (state.outcome?.detail) return state.outcome.detail;
+  if (state.gameOver) return "Result locked in";
   if (currentMode === "pvp") {
-    if (!state.session.opponentJoined) return "Waiting for opponent to join";
-    if (!state.session.gameStarted) return "Opponent joined - host can start";
+    if (state.session.gameState === "waiting_for_guest") return "Waiting for opponent to join";
+    if (state.session.gameState === "ready_to_start") return "Opponent joined - host can start";
+    if (state.session.gameState === "over") return "Game over";
+    if (state.session.gameState !== "started") return "PvP setup";
     return currentRole === "host" ? "You play White" : "You play Black";
   }
   return "Move any ready piece";
+}
+
+function renderUi(statusText = getStatusText(), subText = getSubStatus()) {
+  renderAll(statusText, subText);
+  updateResignButton();
+}
+
+function pvpStatusLabel() {
+  const gs = state.session.gameState;
+  if (gs === "waiting_for_guest") return "Waiting for guest...";
+  if (gs === "ready_to_start") return "Ready to start";
+  if (gs === "started") return "Playing";
+  if (gs === "over") {
+    if (state.outcome?.detail?.toLowerCase().includes("resigned")) return state.outcome.detail;
+    if (state.outcome?.title) {
+      if (state.outcome.title.includes("White wins")) return "White won";
+      if (state.outcome.title.includes("Black wins")) return "Black won";
+      return state.outcome.title;
+    }
+    return "Game over";
+  }
+  return "";
+}
+
+function setLifecycle(nextState) {
+  setGameState(nextState);
+  if (nextState !== "started") resetResignPrompt();
+  updateInviteUI();
+}
+
+function roleToColor(role) {
+  if (role === "host") return "w";
+  if (role === "guest") return "b";
+  return null;
+}
+
+function canLocalResign() {
+  return currentMode === "pvp" && (currentRole === "host" || currentRole === "guest");
+}
+
+function isGameInProgress() {
+  const started =
+    currentMode === "pvp" ? state.session.gameState === "started" : !state.gameOver;
+  return started && !state.gameOver;
+}
+
+function resetResignPrompt() {
+  resignArmed = false;
+  updateResignButton();
+}
+
+function updateResignButton() {
+  const row = elements.resignRow;
+  const btn = elements.resignBtn;
+  if (!row || !btn) return;
+  const visible = isGameInProgress() && canLocalResign();
+  row.classList.toggle("hidden", !visible);
+  if (!visible) {
+    resignArmed = false;
+    return;
+  }
+  btn.textContent = resignArmed ? "Click again to resign" : "Resign";
+  btn.classList.toggle("confirm", resignArmed);
+}
+
+function makeResignOutcome(resignerRole) {
+  const resigningColor = roleToColor(resignerRole);
+  if (!resigningColor) return null;
+  const winner = resigningColor === "w" ? "b" : "w";
+  const winnerLabel = winner === "w" ? "White wins" : "Black wins";
+  const resignerLabel = resigningColor === "w" ? "White" : "Black";
+  return { title: winnerLabel, detail: `${resignerLabel} resigned` };
+}
+
+function applyOutcomeEverywhere(outcome) {
+  if (!outcome) return;
+  forceOutcome(outcome, serverState);
+  forceOutcome(outcome, state);
+  if (state.session.mode === "pvp") {
+    setLifecycle("over");
+  }
+  pendingIntents = [];
+  resetResignPrompt();
+  renderUi(getStatusText(), getSubStatus());
+}
+
+function sendResignMessage() {
+  if (!wsConnected || !ws || !currentGameId) return;
+  ws.send(
+    JSON.stringify({
+      type: "resign",
+      role: currentRole,
+      gameId: currentGameId,
+      ts: Date.now(),
+    })
+  );
+}
+
+function handleResignClick() {
+  if (!isGameInProgress() || !canLocalResign()) {
+    resetResignPrompt();
+    return;
+  }
+  if (!resignArmed) {
+    resignArmed = true;
+    updateResignButton();
+    return;
+  }
+  const outcome = makeResignOutcome(currentRole);
+  applyOutcomeEverywhere(outcome);
+  if (outcome && currentMode === "pvp") {
+    sendResignMessage();
+  }
+}
+
+function applyRemoteResign(role) {
+  const outcome = makeResignOutcome(role);
+  applyOutcomeEverywhere(outcome);
+}
+
+function handleRematchClick() {
+  if (currentMode !== "pvp") return;
+  if (state.session.gameState !== "over") return;
+  triggerRematch(true);
 }
 
 function makeIntent(from, to, promotion = null, client = clientId, createdAt = Date.now()) {
@@ -95,7 +234,10 @@ function reconcileFromServer() {
     lastMove: state.lastMove,
     moveHistory: state.moveHistory.slice(-4),
   });
-  renderAll(getStatusText(), getSubStatus());
+  if (state.session.mode === "pvp" && state.gameOver) {
+    setLifecycle("over");
+  }
+  renderUi(getStatusText(), getSubStatus());
 }
 
 function applyServerIntent(intent) {
@@ -188,15 +330,15 @@ function handleSquareClick(idx) {
   if (state.selected === null) {
     if (state.premove[idx]) {
       clearPremoveEverywhere(idx);
-      renderAll(getStatusText(), getSubStatus());
+      renderUi(getStatusText(), getSubStatus());
       return;
     }
     if (piece && isPieceAllowedForRole(piece) && canSelect(idx)) {
       selectSquare(idx);
-      renderAll(getStatusText(), getSubStatus());
+      renderUi(getStatusText(), getSubStatus());
       return;
     }
-    renderAll(getStatusText(), getSubStatus());
+    renderUi(getStatusText(), getSubStatus());
     return;
   }
 
@@ -205,13 +347,13 @@ function handleSquareClick(idx) {
       clearPremoveEverywhere(idx);
     }
     clearSelection();
-    renderAll(getStatusText(), getSubStatus());
+    renderUi(getStatusText(), getSubStatus());
     return;
   }
 
   const action = handleMoveIntent(idx);
   if (action === "intent") {
-    renderAll(getStatusText(), getSubStatus());
+    renderUi(getStatusText(), getSubStatus());
     return;
   }
   if (action === "promotion") return;
@@ -221,7 +363,7 @@ function handleSquareClick(idx) {
   } else {
     clearSelection();
   }
-  renderAll(getStatusText(), getSubStatus());
+  renderUi(getStatusText(), getSubStatus());
 }
 
 function executeMove(move, isRemote = false, createdAt = Date.now()) {
@@ -276,21 +418,42 @@ function handleDrop(targetIdx) {
   if (state.selected === null) return;
   const action = handleMoveIntent(targetIdx);
   if (action === "intent") {
-    renderAll(getStatusText(), getSubStatus());
+    renderUi(getStatusText(), getSubStatus());
   } else if (action === "none") {
-    renderAll(getStatusText(), getSubStatus());
+    renderUi(getStatusText(), getSubStatus());
   }
 }
 
-function newGame() {
-  if (currentMode === "pvp") {
-    setGameStarted(false);
-  }
+function newGame(nextLifecycle) {
+  const lifecycle =
+    nextLifecycle ||
+    (currentMode === "pvp"
+      ? state.session.opponentJoined
+        ? "ready_to_start"
+        : "waiting_for_guest"
+      : "started");
+  setLifecycle(lifecycle);
   resetGame();
+  resetResignPrompt();
   pendingIntents = [];
   intentSeq = 1;
   state.orientation = currentRole === "guest" ? "b" : "w";
-  renderAll("Ready", getSubStatus());
+  renderUi("Ready", getSubStatus());
+}
+
+function triggerRematch(local = true) {
+  if (currentMode !== "pvp") return;
+  const nextLifecycle = state.session.opponentJoined ? "ready_to_start" : "waiting_for_guest";
+  setLifecycle(nextLifecycle);
+  resetGame();
+  resetResignPrompt();
+  pendingIntents = [];
+  intentSeq = 1;
+  state.orientation = currentRole === "guest" ? "b" : "w";
+  renderUi("Ready", getSubStatus());
+  if (local && wsConnected && ws) {
+    ws.send(JSON.stringify({ type: "rematch", gameId: currentGameId }));
+  }
 }
 
 function makeGameId() {
@@ -364,25 +527,48 @@ function connectWs(gameId, role) {
         incomingMoves.push({ ...data.move, role: data.role, ts: data.ts });
         return;
       }
+      if (data.type === "resign") {
+        applyRemoteResign(data.role);
+        return;
+      }
+      if (data.type === "rematch") {
+        triggerRematch(false);
+        return;
+      }
       if (data.type === "state" && data.state) {
         const wasStarted = state.session.gameStarted;
         setOpponentJoined(!!data.state.guest);
-        setGameStarted(!!data.state.started);
-        if (data.state.started && !wasStarted) startInitialCooldowns();
+        const nextLifecycle =
+          data.state.state ||
+          (data.state.started
+            ? "started"
+            : data.state.guest
+              ? "ready_to_start"
+              : "waiting_for_guest");
+        if (state.gameOver) {
+          setLifecycle("over");
+        } else if (state.session.gameState !== "over") {
+          setLifecycle(nextLifecycle);
+        }
+        if (nextLifecycle === "started" && !wasStarted) startInitialCooldowns();
         updateInviteUI();
-        renderAll(getStatusText(), getSubStatus());
+        renderUi(getStatusText(), getSubStatus());
       }
       if (data.type === "joined") {
         setOpponentJoined(true);
-        updateInviteUI();
-        renderAll(getStatusText(), getSubStatus());
+        if (!state.gameOver && state.session.gameState !== "over" && state.session.gameState !== "started") {
+          setLifecycle("ready_to_start");
+        } else {
+          updateInviteUI();
+        }
+        renderUi(getStatusText(), getSubStatus());
       }
       if (data.type === "started") {
         const wasStarted = state.session.gameStarted;
-        setGameStarted(true);
+        setLifecycle("started");
         if (!wasStarted) startInitialCooldowns();
         updateInviteUI();
-        renderAll("Game started", getSubStatus());
+        renderUi("Game started", getSubStatus());
       }
     } catch (err) {
       // ignore parse errors
@@ -395,6 +581,7 @@ function updateInviteUI() {
   if (currentMode !== "pvp") {
     panel.classList.add("hidden");
     elements.startGameBtn.disabled = true;
+    elements.rematchBtn.classList.add("hidden");
     elements.pvpStatus.textContent = "";
     return;
   }
@@ -402,22 +589,19 @@ function updateInviteUI() {
   const link = buildInviteLink(currentGameId);
   elements.inviteLink.value = link;
   const isHost = currentRole === "host";
+  const gs = state.session.gameState;
   elements.startGameBtn.textContent = "Start game";
-  elements.startGameBtn.disabled = !isHost || !state.session.opponentJoined || state.session.gameStarted;
+  elements.startGameBtn.disabled = !(isHost && gs === "ready_to_start");
   elements.startGameBtn.classList.toggle("hidden", !isHost);
+  elements.rematchBtn.classList.toggle("hidden", gs !== "over");
   if (!serverAvailable) {
+    elements.startGameBtn.disabled = true;
+    elements.rematchBtn.disabled = true;
     elements.pvpStatus.textContent = "PvP server unavailable. Run node server.js";
     return;
   }
-  elements.pvpStatus.textContent = state.session.opponentJoined
-    ? state.session.gameStarted
-      ? "Game started"
-      : isHost
-        ? "Opponent has joined. Host can start."
-        : "Waiting for host to start the game."
-    : isHost
-      ? "Waiting for opponent to join"
-      : "Waiting for host to start the game.";
+  elements.rematchBtn.disabled = false;
+  elements.pvpStatus.textContent = pvpStatusLabel();
 }
 
 function updateMode(newMode) {
@@ -438,14 +622,14 @@ function updateMode(newMode) {
     setRole("host");
     setOrientation("w");
     setOpponentJoined(false);
-    setGameStarted(false);
+    setLifecycle("waiting_for_guest");
     logDebug("[mode] host pvp", { gameId: currentGameId });
     connectWs(currentGameId, currentRole);
   } else {
     currentRole = "solo";
     setRole("solo");
     setOpponentJoined(false);
-    setGameStarted(false);
+    setLifecycle("started");
     currentGameId = null;
     setGameId(null);
     disconnectWs();
@@ -467,12 +651,14 @@ function initFromUrl() {
       currentRole = "guest";
       setRole("guest");
       setOrientation("b");
+      setLifecycle("ready_to_start");
       logDebug("[url] join as guest", { gameId });
       connectWs(gameId, currentRole);
     } else {
       currentRole = "host";
       setRole("host");
       setOrientation("w");
+      setLifecycle("waiting_for_guest");
       logDebug("[url] join as host", { gameId });
       connectWs(gameId, currentRole);
     }
@@ -500,7 +686,10 @@ function init() {
   elements.copyInviteBtn = document.getElementById("copyInviteBtn");
   elements.pvpStatus = document.getElementById("pvpStatus");
   elements.startGameBtn = document.getElementById("startGameBtn");
+  elements.rematchBtn = document.getElementById("rematchBtn");
   elements.soloOptions = document.getElementById("soloOptions");
+  elements.resignBtn = document.getElementById("resignBtn");
+  elements.resignRow = document.getElementById("resignRow");
   elements.debugLog = document.getElementById("debugLog");
 
   bindControls(elements, {
@@ -511,7 +700,7 @@ function init() {
     },
     onFlip: () => {
       state.orientation = state.orientation === "w" ? "b" : "w";
-      renderAll(getStatusText(), getSubStatus());
+      renderUi(getStatusText(), getSubStatus());
     },
     onReset: () => {
       newGame();
@@ -549,13 +738,22 @@ function init() {
 
   elements.startGameBtn.addEventListener("click", () => {
     if (currentRole !== "host") return;
-    setGameStarted(true);
+    if (state.session.gameState !== "ready_to_start") return;
+    setLifecycle("started");
     startInitialCooldowns();
     updateInviteUI();
-    renderAll("Game started", getSubStatus());
+    renderUi("Game started", getSubStatus());
     if (wsConnected && ws) {
       ws.send(JSON.stringify({ type: "start", gameId: currentGameId }));
     }
+  });
+
+  elements.rematchBtn.addEventListener("click", handleRematchClick);
+  elements.resignBtn.addEventListener("click", handleResignClick);
+  document.addEventListener("click", (event) => {
+    if (!resignArmed) return;
+    if (elements.resignBtn && elements.resignBtn.contains(event.target)) return;
+    resetResignPrompt();
   });
 
   newGame();

@@ -18,7 +18,7 @@ const MIME = {
   ".gif": "image/gif",
 };
 
-const games = new Map(); // gameId -> {host: null|ws, guest: null|ws, started: bool}
+const games = new Map(); // gameId -> {host: null|ws, guest: null|ws, state: string}
 const recvBuffers = new WeakMap(); // socket -> Buffer
 
 function serveStatic(req, res) {
@@ -114,7 +114,7 @@ function parseFrameAt(buffer, start = 0) {
 }
 
 function getGame(gameId) {
-  if (!games.has(gameId)) games.set(gameId, { host: null, guest: null, started: false });
+  if (!games.has(gameId)) games.set(gameId, { host: null, guest: null, state: "waiting_for_guest" });
   return games.get(gameId);
 }
 
@@ -130,13 +130,32 @@ function handleMessage(socket, gameId, role, msg) {
     const data = JSON.parse(msg);
     if (data.type === "start" && role === "host") {
       const game = getGame(gameId);
-      game.started = true;
+      game.state = "started";
       console.log("[ws] start", { gameId });
       broadcast(gameId, { type: "started", gameId }, null);
+      broadcast(gameId, { type: "state", state: { host: !!game.host, guest: !!game.guest, state: game.state } }, null);
     }
     if (data.type === "move") {
       console.log("[ws] move recv", { gameId, role, move: data.move, ts: data.ts, clientId: data.clientId });
       broadcast(gameId, { ...data, gameId }, socket);
+    }
+    if (data.type === "resign") {
+      console.log("[ws] resign", { gameId, role, ts: data.ts });
+      const game = getGame(gameId);
+      game.state = "over";
+      broadcast(gameId, { type: "resign", role, gameId, ts: data.ts }, socket);
+      broadcast(gameId, { type: "state", state: { host: !!game.host, guest: !!game.guest, state: game.state } }, null);
+    }
+    if (data.type === "rematch") {
+      console.log("[ws] rematch", { gameId, role, ts: data.ts });
+      const game = getGame(gameId);
+      if (game.host && game.guest) {
+        game.state = "ready_to_start";
+      } else {
+        game.state = "waiting_for_guest";
+      }
+      broadcast(gameId, { type: "rematch", gameId, ts: data.ts }, socket);
+      broadcast(gameId, { type: "state", state: { host: !!game.host, guest: !!game.guest, state: game.state } }, null);
     }
   } catch (e) {
     // ignore malformed
@@ -188,10 +207,13 @@ server.on("upgrade", (req, socket) => {
   const game = getGame(gameId);
   if (role === "host") game.host = socket;
   if (role === "guest") game.guest = socket;
+  if (game.host && game.guest && game.state === "waiting_for_guest") {
+    game.state = "ready_to_start";
+  }
   sendFrame(socket, {
     type: "state",
     gameId,
-    state: { host: !!game.host, guest: !!game.guest, started: game.started },
+    state: { host: !!game.host, guest: !!game.guest, state: game.state, started: game.state === "started" },
   });
   broadcast(gameId, { type: "joined", gameId, role }, socket);
 

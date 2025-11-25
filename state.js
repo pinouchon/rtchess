@@ -19,6 +19,7 @@ function createCoreState() {
     moveHistory: [],
     inCheck: { w: false, b: false },
     gameOver: false,
+    outcome: null,
     cooldowns: game.board.map((p) => (p ? { until: now + 3000, duration: 3000 } : null)),
     premove: Array(64).fill(null),
   };
@@ -39,6 +40,7 @@ function cloneCoreState(core) {
     moveHistory: [...core.moveHistory],
     inCheck: { ...core.inCheck },
     gameOver: core.gameOver,
+    outcome: core.outcome ? { ...core.outcome } : null,
     cooldowns: core.cooldowns.map(cloneCooldown),
     premove: core.premove.map(clonePremove),
   };
@@ -50,6 +52,7 @@ function copyCoreState(source, target) {
   target.moveHistory = [...source.moveHistory];
   target.inCheck = { ...source.inCheck };
   target.gameOver = source.gameOver;
+  target.outcome = source.outcome ? { ...source.outcome } : null;
   target.cooldowns = source.cooldowns.map(cloneCooldown);
   target.premove = source.premove.map(clonePremove);
 }
@@ -66,6 +69,7 @@ export const state = {
   moveHistory: initialCore.moveHistory,
   orientation: "w",
   gameOver: initialCore.gameOver,
+  outcome: initialCore.outcome,
   dragFrom: null,
   dragging: null,
   hoverTarget: null,
@@ -79,6 +83,7 @@ export const state = {
     gameId: null,
     opponentJoined: false,
     gameStarted: false,
+    gameState: "gametesting",
   },
 };
 
@@ -107,6 +112,7 @@ export function resetGame() {
   state.dragging = null;
   state.hoverTarget = null;
   state.gameOver = false;
+  state.outcome = null;
 }
 
 export function selectSquare(idx) {
@@ -146,7 +152,20 @@ export function setOpponentJoined(val) {
 }
 
 export function setGameStarted(val) {
+  // Legacy helper: keep boolean in sync but prefer setGameState
   state.session.gameStarted = val;
+  if (state.session.mode === "pvp") {
+    if (val) {
+      state.session.gameState = "started";
+    } else if (state.session.gameState === "started") {
+      state.session.gameState = "ready_to_start";
+    }
+  }
+}
+
+export function setGameState(lifecycle) {
+  state.session.gameState = lifecycle;
+  state.session.gameStarted = lifecycle === "started";
 }
 
 export function startInitialCooldowns() {
@@ -182,7 +201,12 @@ export function applyMove(move, store = state, now = Date.now()) {
     b: isInCheck(store.game, "b"),
   };
   const outcome = evaluateGameEnd(store.game);
-  if (outcome) store.gameOver = true;
+  if (outcome) {
+    store.gameOver = true;
+    store.outcome = outcome;
+  } else {
+    store.outcome = null;
+  }
   return outcome;
 }
 
@@ -292,4 +316,16 @@ export function hydrateClientFromCore(core) {
   state.hoverTarget = null;
   state.dragFrom = null;
   state.dragging = null;
+}
+
+export function forceOutcome(outcome, store = state) {
+  store.gameOver = true;
+  store.outcome = outcome ? { ...outcome } : null;
+  store.selected = null;
+  store.legalMoves = [];
+  store.patternMoves = [];
+  store.hoverTarget = null;
+  store.dragFrom = null;
+  store.dragging = null;
+  store.premove = store.premove.map(() => null);
 }

@@ -517,11 +517,29 @@ select {
   transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
 
+.btn.block {
+  width: 100%;
+}
+
 .btn.primary {
   background: linear-gradient(135deg, #6ec77c, #58af66);
   color: #0f1115;
   border: none;
   box-shadow: 0 12px 24px rgba(110, 199, 124, 0.35);
+}
+
+.btn.danger {
+  background: linear-gradient(135deg, #f26b6b, #d55757);
+  color: #0f1115;
+  border: none;
+  box-shadow: 0 12px 24px rgba(242, 107, 107, 0.32);
+}
+
+.btn.danger.confirm {
+  background: rgba(242, 107, 107, 0.18);
+  color: var(--danger);
+  border: 1px solid rgba(242, 107, 107, 0.55);
+  box-shadow: 0 0 0 4px rgba(242, 107, 107, 0.14);
 }
 
 .btn.ghost {
@@ -541,6 +559,10 @@ select {
   max-height: 220px;
   overflow: auto;
   font-weight: 600;
+}
+
+.resign-row {
+  margin: 8px 0 12px;
 }
 
 @media (max-width: 1024px) {
